@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from .config import settings
-from .database import get_db
+from . import database
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """
@@ -181,7 +181,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         
         is_authenticated = False
         try:
-            db = next(get_db())
+            if database.SessionLocal is None:
+                database.init_engine()
+                if database.SessionLocal is None:
+                    return await call_next(request)
+            db = database.SessionLocal()
             try:
                 if self.verify_auth(request, db):
                     is_authenticated = True
