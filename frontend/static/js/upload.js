@@ -581,7 +581,9 @@ class Uploader {
             });
 
             if (!response.ok) {
-                throw new Error(`Failed to extract archive: ${response.statusText}`);
+                const errorData = await response.json().catch(() => null);
+                const detail = errorData?.detail || response.statusText;
+                throw new Error(`Failed to extract archive: ${detail}`);
             }
 
             const result = await response.json();

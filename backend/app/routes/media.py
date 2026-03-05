@@ -722,5 +722,9 @@ async def extract_archive(
         raise HTTPException(status_code=400, detail="Invalid or corrupted zip file")
     except tarfile.TarError:
         raise HTTPException(status_code=400, detail="Invalid or corrupted tar.gz file")
+    except HTTPException:
+        raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=400, detail=f"Error extracting archive: {str(e)}")
