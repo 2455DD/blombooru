@@ -501,7 +501,9 @@
             "unshare": "取消分享"
         },
         "ai_metadata": {
-            "title": "AI 生成数据"
+            "title": "AI 生成数据",
+            "show_less": "展示更少",
+            "show_more": "展示更多"
         },
         "fullscreen_close_hint": "按 ESC 或点击媒体外部以关闭",
         "info": {
@@ -710,7 +712,8 @@
         "albums": "相册",
         "logout": "注销",
         "search_placeholder": "搜索标签... (例如: ?girl? *_background cat_ears -dog)",
-        "search_syntax_guide": "搜索语法指南"
+        "search_syntax_guide": "搜索语法指南",
+        "upload": "上传"
     },
     "notifications": {
         "admin": {
