@@ -202,7 +202,7 @@ class Uploader {
                 <label class="block text-xs font-bold mb-2">${window.i18n.t('upload.base_settings.base_rating')}</label>
                 <div id="base-rating" class="custom-select" data-value="safe">
                     <button class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 surface border text-xs cursor-pointer focus:outline-none focus:border-primary" type="button">
-                        <span class="custom-select-value text-secondary">${window.i18n.t('upload.base_settings.safe')}</span>
+                        <span class="custom-select-value text">${window.i18n.t('upload.base_settings.safe')}</span>
                         <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary" width="12" height="12" viewBox="0 0 12 12">
                             <path fill="currentColor" d="M6 9L1 4h10z"/>
                         </svg>
@@ -220,7 +220,7 @@ class Uploader {
                 <div class="flex flex-wrap gap-2 mb-2 hidden" id="base-albums-list"></div>
                 <div id="base-album-select" class="custom-select" data-value="">
                     <button class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 surface border text-xs cursor-pointer focus:outline-none focus:border-primary" type="button">
-                        <span class="custom-select-value text-secondary">${window.i18n.t('upload.base_settings.select_album')}</span>
+                        <span class="custom-select-value text">${window.i18n.t('upload.base_settings.select_album')}</span>
                         <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary" width="12" height="12" viewBox="0 0 12 12">
                             <path fill="currentColor" d="M6 9L1 4h10z"/>
                         </svg>
@@ -326,7 +326,7 @@ class Uploader {
                         <label class="block text-xs font-bold mb-2">${window.i18n.t('upload.preview.individual_rating')}</label>
                         <div id="individual-rating" class="custom-select" data-value="safe">
                             <button class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 surface border text-xs cursor-pointer focus:outline-none focus:border-primary" type="button">
-                                <span class="custom-select-value text-secondary">${window.i18n.t('upload.base_settings.safe')}</span>
+                                <span class="custom-select-value text">${window.i18n.t('upload.base_settings.safe')}</span>
                                 <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary" width="12" height="12" viewBox="0 0 12 12">
                                     <path fill="currentColor" d="M6 9L1 4h10z"/>
                                 </svg>
@@ -344,7 +344,7 @@ class Uploader {
                         <div class="flex flex-wrap gap-2 mb-2" id="individual-albums-list"></div>
                         <div id="individual-album-select" class="custom-select" data-value="">
                             <button class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 surface border text-xs cursor-pointer focus:outline-none focus:border-primary" type="button">
-                                <span class="custom-select-value text-secondary">${window.i18n.t('upload.base_settings.select_album')}</span>
+                                <span class="custom-select-value text">${window.i18n.t('upload.base_settings.select_album')}</span>
                                 <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary" width="12" height="12" viewBox="0 0 12 12">
                                     <path fill="currentColor" d="M6 9L1 4h10z"/>
                                 </svg>
@@ -572,29 +572,71 @@ class Uploader {
         this.uploadArea.parentNode.insertBefore(loadingDiv, this.uploadArea.nextSibling);
 
         try {
-            const formData = new FormData();
-            formData.append('file', archiveFile);
+            const CHUNK_SIZE = 99 * 1024 * 1024; // 99MB per chunk
+            const totalChunks = Math.ceil(archiveFile.size / CHUNK_SIZE);
+            const uploadId = crypto.randomUUID();
+
+            // Upload chunks sequentially
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * CHUNK_SIZE;
+                const end = Math.min(start + CHUNK_SIZE, archiveFile.size);
+                const chunk = archiveFile.slice(start, end);
+
+                loadingDiv.textContent = window.i18n.t('upload.progress.extracting', { filename: archiveFile.name })
+                    + ` (${i + 1}/${totalChunks})`;
+
+                const chunkForm = new FormData();
+                chunkForm.append('file', chunk, archiveFile.name);
+                chunkForm.append('upload_id', uploadId);
+                chunkForm.append('chunk_index', i.toString());
+                chunkForm.append('total_chunks', totalChunks.toString());
+                chunkForm.append('filename', archiveFile.name);
+
+                const chunkResponse = await fetch('/api/media/archive-chunk', {
+                    method: 'POST',
+                    body: chunkForm
+                });
+
+                if (!chunkResponse.ok) {
+                    const errorData = await chunkResponse.json().catch(() => null);
+                    const detail = errorData?.detail || chunkResponse.statusText;
+                    throw new Error(`Failed to upload chunk ${i + 1}/${totalChunks}: ${detail}`);
+                }
+            }
+
+            // Trigger extraction
+            loadingDiv.textContent = window.i18n.t('upload.progress.extracting', { filename: archiveFile.name });
+
+            const extractForm = new FormData();
+            extractForm.append('upload_id', uploadId);
 
             const response = await fetch('/api/media/extract-archive', {
                 method: 'POST',
-                body: formData
+                body: extractForm
             });
 
             if (!response.ok) {
-                throw new Error(`Failed to extract archive: ${response.statusText}`);
+                const errorData = await response.json().catch(() => null);
+                const detail = errorData?.detail || response.statusText;
+                throw new Error(`Failed to extract archive: ${detail}`);
             }
 
             const result = await response.json();
 
-            // result.files contains array of extracted file data
-            for (const extractedFileData of result.files) {
-                // Convert base64 to blob
-                const binaryString = atob(extractedFileData.content);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
+            // Fetch each extracted file individually
+            for (let i = 0; i < result.files.length; i++) {
+                const extractedFileData = result.files[i];
+
+                loadingDiv.textContent = window.i18n.t('upload.progress.extracting', { filename: archiveFile.name })
+                    + ` (${i + 1}/${result.files.length})`;
+
+                const fileResponse = await fetch(`/api/media/archive-file/${result.upload_id}/${extractedFileData.file_id}`);
+                if (!fileResponse.ok) {
+                    console.warn(`Failed to fetch extracted file: ${extractedFileData.filename}`);
+                    continue;
                 }
-                const blob = new Blob([bytes], { type: extractedFileData.mime_type });
+
+                const blob = await fileResponse.blob();
                 const file = new File([blob], extractedFileData.filename, { type: extractedFileData.mime_type });
 
                 if (this.isValidFile(file)) {
@@ -621,6 +663,9 @@ class Uploader {
                     this.createPreview(fileData, this.uploadedFiles.length - 1);
                 }
             }
+
+            // Clean up extracted files on the server
+            fetch(`/api/media/archive-cleanup/${result.upload_id}`, { method: 'DELETE' }).catch(() => { });
 
             loadingDiv.textContent = window.i18n.t('upload.progress.extracted_success', { count: result.files.length, filename: archiveFile.name });
             setTimeout(() => loadingDiv.remove(), 3000);
@@ -1040,14 +1085,7 @@ class Uploader {
     }
 }
 
-// Initialize uploader if upload area exists and expose globally, but wait for i18n to load before creating it
+// Initialize uploader if upload area exists
 if (document.getElementById('upload-area')) {
-    if (window.i18n && window.i18n.loaded) {
-        window.uploaderInstance = new Uploader();
-    } else {
-        // Wait for i18n to load
-        window.addEventListener('i18n-loaded', () => {
-            window.uploaderInstance = new Uploader();
-        });
-    }
+    window.uploaderInstance = new Uploader();
 }

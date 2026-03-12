@@ -70,7 +70,7 @@
                                         <button
                                             class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 bg border text-xs cursor-pointer focus:outline-none hover:border-primary transition-colors focus:border-primary"
                                             type="button">
-                                            <span class="custom-select-value text-secondary">
+                                            <span class="custom-select-value text">
                                                 {{ t('admin.settings.loading_themes') }}
                                             </span>
                                             <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary"
@@ -92,7 +92,7 @@
                                         <button
                                             class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 bg border text-xs cursor-pointer focus:outline-none hover:border-primary transition-colors focus:border-primary"
                                             type="button">
-                                            <span class="custom-select-value text-secondary">
+                                            <span class="custom-select-value text">
                                                 {{ t('common.loading') }}
                                             </span>
                                             <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary"
@@ -117,7 +117,7 @@
                                         <button
                                             class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 bg border text-xs cursor-pointer focus:outline-none hover:border-primary transition-colors focus:border-primary"
                                             type="button">
-                                            <span class="custom-select-value">
+                                            <span class="custom-select-value text">
                                                 {{ t('admin.settings.upload_date') }}
                                             </span>
                                             <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary"
@@ -141,7 +141,7 @@
                                         <button
                                             class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 bg border text-xs cursor-pointer focus:outline-none hover:border-primary transition-colors focus:border-primary"
                                             type="button">
-                                            <span class="custom-select-value">
+                                            <span class="custom-select-value text">
                                                 {{ t('admin.settings.descending') }}
                                             </span>
                                             <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary"
@@ -207,7 +207,7 @@
                                                 <button
                                                     class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 bg border text-xs cursor-pointer focus:outline-none hover:border-primary transition-colors focus:border-primary"
                                                     type="button">
-                                                    <span class="custom-select-value">
+                                                    <span class="custom-select-value text">
                                                         {{ t('admin.settings.sidebar_mode_rating') }}
                                                     </span>
                                                     <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary"
@@ -458,20 +458,20 @@
                             <h3 class="text-sm font-bold mb-1">
                                 {{ t('admin.settings.booru_config.configured_sites') }}
                             </h3>
-                            <div class="overflow-x-auto max-h-60 overflow-y-auto border border-surface">
-                                <table id="booru-config-table" class="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr class="border-b border-surface text-secondary text-xs">
-                                            <th class="sticky top-0 bg-surface z-10 py-2 px-3 font-medium">
+                            <div class="overflow-x-auto max-h-60 overflow-y-auto border">
+                                <table id="booru-config-table" class="bg w-full text-left border-collapse">
+                                    <thead class="border-b">
+                                        <tr class="text-secondary text-xs">
+                                            <th class="sticky top-0 z-10 py-2 px-3 font-medium">
                                                 {{ t('admin.settings.booru_config.domain') }}
                                             </th>
-                                            <th class="sticky top-0 bg-surface z-10 py-2 px-3 font-medium">
+                                            <th class="sticky top-0 z-10 py-2 px-3 font-medium">
                                                 {{ t('admin.settings.booru_config.username') }}
                                             </th>
-                                            <th class="sticky top-0 bg-surface z-10 py-2 px-3 font-medium">
+                                            <th class="sticky top-0 z-10 py-2 px-3 font-medium">
                                                 {{ t('admin.settings.booru_config.key') }}
                                             </th>
-                                            <th class="sticky top-0 bg-surface z-10 py-2 px-3 font-medium text-right">
+                                            <th class="sticky top-0 z-10 py-2 px-3 font-medium text-right">
                                                 {{ t('admin.settings.booru_config.action') }}
                                             </th>
                                         </tr>
@@ -659,7 +659,7 @@
         <!-- Content Tab -->
         <div id="tab-content" class="tab-content hidden">
             <!-- Media Management Section -->
-            <div class="surface p-2 sm:p-6 border mb-4">
+            <div class="surface p-2 sm:p-6 border mb-4" id="media-management">
                 <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.media_management.title') }}</h2>
                 <div id="media-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                     <div class="bg p-3 border">
@@ -872,7 +872,7 @@
                                     <button
                                         class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 bg border text-xs cursor-pointer focus:outline-none hover:border-primary transition-colors focus:border-primary"
                                         type="button">
-                                        <span class="custom-select-value text-secondary">
+                                        <span class="custom-select-value text">
                                             {{ t('admin.albums_management.none_root') }}
                                         </span>
                                         <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary"

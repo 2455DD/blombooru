@@ -345,23 +345,46 @@ class AdminPanel {
             });
         });
 
-        // Initialize from local storage or default
+        // Initialize from URL parameters or local storage
+        const urlParams = new URLSearchParams(window.location.search);
+        const tabParam = urlParams.get('tab');
         const savedTab = localStorage.getItem('admin_active_tab');
         const defaultTab = 'content';
+        let initialTab = defaultTab;
 
-        if (savedTab && document.querySelector(`.tab-btn[data-tab="${savedTab}"]`)) {
-            switchTab(savedTab);
-        } else {
-            switchTab(defaultTab);
+        if (tabParam && document.querySelector(`.tab-btn[data-tab="${tabParam}"]`)) {
+            initialTab = tabParam;
+            urlParams.delete('tab');
+            const newSearch = urlParams.toString();
+            const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '') + window.location.hash;
+            window.history.replaceState({}, '', newUrl);
+        } else if (savedTab && document.querySelector(`.tab-btn[data-tab="${savedTab}"]`)) {
+            initialTab = savedTab;
         }
 
+        switchTab(initialTab);
+
         // If stats tab is active after initialization, ensure it's loaded
-        if ((savedTab === 'stats' || defaultTab === 'stats') && this.statsModule) {
+        if (initialTab === 'stats' && this.statsModule) {
             setTimeout(() => {
                 if (this.statsModule && !this.statsModule.isInitialized) {
                     this.statsModule.init();
                 }
             }, 100);
+        }
+
+        // Handle scrolling to hash element if present
+        if (window.location.hash) {
+            setTimeout(() => {
+                try {
+                    const targetElement = document.getElementById(window.location.hash.substring(1));
+                    if (targetElement) {
+                        targetElement.scrollIntoView();
+                    }
+                } catch (e) {
+                    console.error("Error scrolling to hash:", e);
+                }
+            }, 150);
         }
     }
 
@@ -1908,7 +1931,7 @@ class AdminPanel {
                         <button
                             class="custom-select-trigger w-full flex items-center justify-between gap-3 px-3 py-2 bg border text-xs cursor-pointer focus:outline-none focus:border-primary"
                             type="button">
-                            <span class="custom-select-value">${this.escapeHtml(initialDisplayText)}</span>
+                            <span class="custom-select-value text">${this.escapeHtml(initialDisplayText)}</span>
                             <svg class="custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary"
                                 width="12" height="12" viewBox="0 0 12 12">
                                 <path fill="currentColor" d="M6 9L1 4h10z" />

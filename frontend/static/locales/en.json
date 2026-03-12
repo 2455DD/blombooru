@@ -501,6 +501,8 @@
             "unshare": "Unshare"
         },
         "ai_metadata": {
+            "show_less": "Show Less",
+            "show_more": "Show More",
             "title": "AI Generation Data"
         },
         "fullscreen_close_hint": "Press ESC or click outside the media to close",
@@ -710,7 +712,8 @@
         "albums": "Albums",
         "logout": "Logout",
         "search_placeholder": "Search tags... (e.g., ?girl? *_background cat_ears -dog)",
-        "search_syntax_guide": "Search Syntax Guide"
+        "search_syntax_guide": "Search Syntax Guide",
+        "upload": "Upload"
     },
     "notifications": {
         "admin": {

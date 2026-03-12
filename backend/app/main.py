@@ -1,3 +1,4 @@
+import json
 import subprocess
 import uuid
 from datetime import datetime
@@ -53,6 +54,9 @@ templates.env.globals['app_version'] = APP_VERSION
 templates.env.globals['cache_buster'] = CACHE_BUSTER
 templates.env.globals['get_current_year'] = lambda: datetime.now().year
 templates.env.globals['t'] = lambda key, **kwargs: translation_helper.get(key, settings.CURRENT_LANGUAGE, **kwargs)
+templates.env.globals['get_translations_json'] = lambda: json.dumps(
+    translation_helper.get_translations(settings.CURRENT_LANGUAGE)
+)
 templates.env.globals['current_language'] = lambda: settings.CURRENT_LANGUAGE
 templates.env.globals['available_languages'] = lambda: [lang.to_dict() for lang in language_registry.get_all_languages()]
 templates.env.globals['is_admin'] = lambda request: request.cookies.get("admin_mode") == "true"
@@ -75,6 +79,23 @@ async def startup_event():
         try:
             init_engine()
             init_db()
+
+            # Clean up any leftover archive chunks from abandoned uploads
+            from .routes.media import cleanup_archive_chunks
+            cleanup_archive_chunks()
+
+            # Start periodic cleanup task for abandoned archive extractions
+            import asyncio
+
+            async def periodic_archive_cleanup():
+                while True:
+                    await asyncio.sleep(900)  # Every 15 minutes
+                    try:
+                        cleanup_archive_chunks(max_age_seconds=3600)
+                    except Exception as e:
+                        print(f"Archive cleanup error: {e}")
+
+            asyncio.create_task(periodic_archive_cleanup())
                 
             print("Blombooru started successfully")
         except Exception as e:
