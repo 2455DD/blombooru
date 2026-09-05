@@ -2,8 +2,6 @@ class TagInputHelper {
     constructor() {
         this.tagValidationCache = new Map();
         this.validationTimeouts = new Map();
-        this._implicationCache = null;   // null = not loaded, [] = loaded empty
-        this._implicationLoadPromise = null;
 
         window.addEventListener('tagCreated', (e) => {
             if (e.detail && e.detail.name) {
@@ -247,91 +245,46 @@ class TagInputHelper {
         return new RegExp(regexStr, 'i');
     }
 
-    // Fetch and cache all implications from the API (called once per instance)
-    async loadImplications() {
-        if (this._implicationCache !== null) return this._implicationCache;
-        if (this._implicationLoadPromise) return this._implicationLoadPromise;
-
-        this._implicationLoadPromise = fetch('/api/tag-implications/')
-            .then(r => r.ok ? r.json() : [])
-            .then(data => {
-                this._implicationCache = data;
-                return data;
-            })
-            .catch(() => {
-                this._implicationCache = [];
-                return [];
-            });
-
-        return this._implicationLoadPromise;
-    }
-
-    // Apply all matching implications to the current input, including cascading.
-    // Inserts implied tags at the current cursor position (right after the space the user just typed)
-    // so the flow feels natural. Returns true if any tags were inserted (so the caller can re-validate).
+    // Call POST /api/tag-implications/expand with the tags currently in inputElement.
+    // Returns true if any implied tags were inserted (caller may want to re-validate).
     async expandImplications(inputElement) {
-        const implications = await this.loadImplications();
-        if (!implications || implications.length === 0) return false;
+        const text = this.getPlainTextFromDiv(inputElement);
+        const currentTags = text.split(/\s+/).filter(t => t.length > 0);
+        if (currentTags.length === 0) return false;
 
-        let changed = false;
-        const MAX_PASSES = 10;
-
-        for (let pass = 0; pass < MAX_PASSES; pass++) {
-            const text = this.getPlainTextFromDiv(inputElement);
-            const currentTags = new Set(
-                text.split(/\s+/).filter(t => t.length > 0).map(t => t.toLowerCase())
-            );
-
-            const toInsert = [];
-
-            for (const imp of implications) {
-                const allTargetsPresent = imp.target_tags.every(
-                    t => currentTags.has(t.name.toLowerCase())
-                );
-                if (!allTargetsPresent) continue;
-
-                const patterns = imp.target_tag_patterns || [];
-                const allPatternsMatch = patterns.every(pattern => {
-                    const re = this.wildcardToRegex(pattern);
-                    for (const tag of currentTags) {
-                        if (re.test(tag)) return true;
-                    }
-                    return false;
-                });
-                if (!allPatternsMatch) continue;
-
-                for (const implied of imp.implied_tags) {
-                    const name = implied.name.toLowerCase();
-                    if (!currentTags.has(name)) {
-                        toInsert.push(implied.name);
-                        currentTags.add(name);
-                    }
-                }
-            }
-
-            if (toInsert.length === 0) break;
-
-            // Insert at cursor position using execCommand so undo still works
-            const insertText = toInsert.join(' ') + ' ';
-
-            // Ensure focus and selection are on this element
-            inputElement.focus();
-            const sel = window.getSelection();
-            if (!sel.rangeCount || !inputElement.contains(sel.anchorNode)) {
-                // Fallback: place cursor at end
-                const range = document.createRange();
-                range.selectNodeContents(inputElement);
-                range.collapse(false);
-                sel.removeAllRanges();
-                sel.addRange(range);
-            }
-
-            document.execCommand('insertText', false, insertText);
-
-            changed = true;
+        let data;
+        try {
+            const response = await fetch('/api/tag-implications/expand', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tags: currentTags })
+            });
+            if (!response.ok) return false;
+            data = await response.json();
+        } catch (e) {
+            console.error('Error expanding implications:', e);
+            return false;
         }
 
-        return changed;
+        const impliedTags = (data.implied_tags || []).filter(name => {
+            return !currentTags.some(t => t.toLowerCase() === name.toLowerCase());
+        });
+        if (impliedTags.length === 0) return false;
+
+        const insertText = impliedTags.join(' ') + ' ';
+
+        inputElement.focus();
+        const sel = window.getSelection();
+        if (!sel.rangeCount || !inputElement.contains(sel.anchorNode)) {
+            const range = document.createRange();
+            range.selectNodeContents(inputElement);
+            range.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
+        document.execCommand('insertText', false, insertText);
+        return true;
     }
 
     // Setup tag input event listeners
@@ -352,11 +305,6 @@ class TagInputHelper {
         // Strip IDE-injected whitespace (newlines/indents) from empty inputs
         if (inputElement.textContent.trim() === '') {
             inputElement.innerHTML = '';
-        }
-
-        // Pre-load implications cache so expansion fires instantly on first use
-        if (expandImplications) {
-            this.loadImplications();
         }
 
         // Handle input events
