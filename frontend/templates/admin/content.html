@@ -265,7 +265,12 @@
                 <h3 class="text-sm font-bold mb-1">
                     {{ t('admin.tags_implications.configured_implications') }}
                 </h3>
-                <div class="overflow-x-auto max-h-60 overflow-y-auto border">
+                <div id="tag-implication-search-bar" class="mb-1" style="display: none;">
+                    <input type="text" id="tag-implication-search"
+                        class="w-full bg px-2 py-1.5 border text-xs focus:outline-none hover:border-primary transition-colors focus:border-primary"
+                        placeholder="{{ t('common.search_tags_placeholder') }}">
+                </div>
+                <div class="overflow-x-auto max-h-59 overflow-y-auto border">
                     <table id="tag-implication-table" class="bg w-full text-left border-collapse">
                         <thead class="border-b">
                             <tr class="text-secondary text-xs">
@@ -284,6 +289,20 @@
                             <!-- Populated by JS -->
                         </tbody>
                     </table>
+                </div>
+                <div id="tag-implication-pagination"
+                    class="flex justify-between items-center mt-2 text-xs text-secondary" style="display: none;">
+                    <span id="tag-implication-page-info"></span>
+                    <div class="flex gap-1">
+                        <button type="button" id="tag-implication-prev-page"
+                            class="btn px-2 py-1 text-xs cursor-pointer" disabled>
+                            {{ t('common.previous') }}
+                        </button>
+                        <button type="button" id="tag-implication-next-page"
+                            class="btn px-2 py-1 text-xs cursor-pointer" disabled>
+                            {{ t('common.next') }}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

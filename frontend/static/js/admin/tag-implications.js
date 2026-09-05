@@ -9,8 +9,19 @@ class TagImplicationManager {
         this.saveBtn = this.form.querySelector('button[type="submit"]');
         this.cancelBtn = document.getElementById('tag-implication-cancel');
         this.applyAllBtn = document.getElementById('apply-all-implications');
+        this.searchBar = document.getElementById('tag-implication-search-bar');
+        this.searchInput = document.getElementById('tag-implication-search');
+        this.paginationContainer = document.getElementById('tag-implication-pagination');
+        this.pageInfo = document.getElementById('tag-implication-page-info');
+        this.prevPageBtn = document.getElementById('tag-implication-prev-page');
+        this.nextPageBtn = document.getElementById('tag-implication-next-page');
         this.editingId = null;
         this.implications = [];
+        this.pageSize = 50;
+        this.currentPage = 1;
+        this.totalCount = 0;
+        this.currentSearch = '';
+        this.searchDebounceTimeout = null;
         this.tagInputHelper = new TagInputHelper();
 
         this.init();
@@ -63,6 +74,33 @@ class TagImplicationManager {
             }
         }
 
+        if (this.prevPageBtn) {
+            this.prevPageBtn.addEventListener('click', () => {
+                if (this.currentPage > 1) {
+                    this.loadImplications(this.currentPage - 1, this.currentSearch);
+                }
+            });
+        }
+
+        if (this.nextPageBtn) {
+            this.nextPageBtn.addEventListener('click', () => {
+                const maxPage = Math.ceil(this.totalCount / this.pageSize) || 1;
+                if (this.currentPage < maxPage) {
+                    this.loadImplications(this.currentPage + 1, this.currentSearch);
+                }
+            });
+        }
+
+        if (this.searchInput) {
+            this.searchInput.addEventListener('input', () => {
+                clearTimeout(this.searchDebounceTimeout);
+                this.searchDebounceTimeout = setTimeout(() => {
+                    const query = this.searchInput.value.trim();
+                    this.loadImplications(1, query);
+                }, 300);
+            });
+        }
+
         this.loadImplications();
     }
 
@@ -74,18 +112,68 @@ class TagImplicationManager {
         }
     }
 
-    async loadImplications() {
+    async loadImplications(page = 1, search = '') {
         if (!this.tableBody) return;
 
+        this.currentPage = page;
+        this.currentSearch = search;
+        const offset = (page - 1) * this.pageSize;
+
         try {
-            const response = await fetch('/api/tag-implications/');
+            const params = new URLSearchParams({
+                limit: this.pageSize.toString(),
+                offset: offset.toString()
+            });
+            if (search) {
+                params.set('search', search);
+            }
+
+            const response = await fetch(`/api/tag-implications/?${params.toString()}`);
             if (!response.ok) throw new Error('Failed to load');
+
+            const totalHeader = response.headers.get('X-Total-Count');
+            if (totalHeader !== null) {
+                this.totalCount = parseInt(totalHeader, 10) || 0;
+            }
+
             const implications = await response.json();
             this.implications = implications;
             this.renderTable(implications);
+            this.renderPagination();
+
+            // Show search bar once we know there are enough implications to warrant it
+            if (this.searchBar) {
+                this.searchBar.style.display = (this.totalCount >= 20 || search) ? '' : 'none';
+            }
         } catch (e) {
             console.error('Error loading tag implications:', e);
             this.tableBody.innerHTML = `<tr><td colspan="3" class="text-center py-2 text-secondary text-xs">${window.i18n.t('admin.settings.booru_config.no_configs')}</td></tr>`;
+            if (this.paginationContainer) this.paginationContainer.style.display = 'none';
+        }
+    }
+
+    renderPagination() {
+        if (!this.paginationContainer) return;
+
+        if (this.totalCount <= this.pageSize && !this.currentSearch) {
+            this.paginationContainer.style.display = 'none';
+            return;
+        }
+
+        this.paginationContainer.style.display = 'flex';
+        const start = this.totalCount === 0 ? 0 : (this.currentPage - 1) * this.pageSize + 1;
+        const end = Math.min(this.currentPage * this.pageSize, this.totalCount);
+        const maxPage = Math.ceil(this.totalCount / this.pageSize) || 1;
+
+        if (this.pageInfo) {
+            this.pageInfo.textContent = `${start}-${end} / ${this.totalCount}`;
+        }
+
+        if (this.prevPageBtn) {
+            this.prevPageBtn.disabled = this.currentPage <= 1;
+        }
+        if (this.nextPageBtn) {
+            this.nextPageBtn.disabled = this.currentPage >= maxPage;
         }
     }
 
@@ -138,7 +226,7 @@ class TagImplicationManager {
         }
 
         this.tableBody.innerHTML = implications.map(imp => `
-            <tr class="border-b last:border-b-0">
+            <tr class="border-b last:border-b-0" style="content-visibility: auto; contain-intrinsic-size: auto 37px;">
                 <td class="py-2 px-3 text-xs font-mono">${this._buildTargetDisplay(imp)}</td>
                 <td class="py-2 px-3 text-xs font-mono">${imp.implied_tags.map(t => this.escapeHtml(t.name)).join(' ')}</td>
                 <td class="py-2 px-3 text-xs text-right whitespace-nowrap">
@@ -194,10 +282,25 @@ class TagImplicationManager {
         }
 
         // Check if an existing implication already has identical target tags
-        const matchingImp = (this.implications || []).find(imp => {
+        let matchingImp = (this.implications || []).find(imp => {
             if (this.editingId && imp.id === this.editingId) return false;
             return this._areTokensEqual(this._getTargetTokens(imp), allTargetTokens);
         });
+
+        if (!matchingImp && allTargetTokens.length > 0) {
+            try {
+                const checkResp = await fetch(`/api/tag-implications/?search=${encodeURIComponent(allTargetTokens[0])}&limit=20`);
+                if (checkResp.ok) {
+                    const candidates = await checkResp.json();
+                    matchingImp = candidates.find(imp => {
+                        if (this.editingId && imp.id === this.editingId) return false;
+                        return this._areTokensEqual(this._getTargetTokens(imp), allTargetTokens);
+                    });
+                }
+            } catch (err) {
+                console.warn('Could not check for existing matching implication:', err);
+            }
+        }
 
         if (matchingImp) {
             const existingImpliedNames = (matchingImp.implied_tags || []).map(t => t.name);
@@ -273,7 +376,7 @@ class TagImplicationManager {
 
             this.showStatus(window.i18n.t('notifications.save_success'), 'success');
             this.resetForm();
-            this.loadImplications();
+            this.loadImplications(this.currentPage, this.currentSearch);
         } catch (e) {
             console.error('Save error:', e);
             this.showStatus(e.message, 'error');
@@ -293,7 +396,7 @@ class TagImplicationManager {
                     if (!response.ok) throw new Error('Failed to delete');
                     this.showStatus(window.i18n.t('notifications.delete_success'), 'success');
                     if (this.editingId === id) this.resetForm();
-                    this.loadImplications();
+                    this.loadImplications(this.currentPage, this.currentSearch);
                 } catch (e) {
                     this.showStatus(e.message, 'error');
                 }
