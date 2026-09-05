@@ -12,12 +12,14 @@ from backend.app.routes.tag_implications import (
     _resolve_tag_names,
     create_implication,
     delete_implication,
+    expand_tag_implications,
     list_implications,
     simulate_apply_all_implications,
     update_implication,
+    ExpandImplicationsRequest,
     TagImplicationCreate,
 )
-from backend.app.utils.tag_utils import expand_implications
+from backend.app.utils.tag_utils import expand_implications, resolve_implications
 from tests.backup_test_base import BackupTestBase
 
 class TestTagImplications(BackupTestBase):
@@ -189,6 +191,34 @@ class TestTagImplications(BackupTestBase):
         self.assertEqual(len(results), 2)
         for r in results:
             self.assertIsInstance(r.target_tag_patterns, list)
+
+    def test_list_implications_pagination_and_search(self):
+        """Test pagination and search parameters on list_implications."""
+        from fastapi import Response
+        tag1 = self._create_tag("page_tag_1")
+        tag2 = self._create_tag("page_tag_2")
+        tag3 = self._create_tag("search_alpha")
+        tag_out = self._create_tag("common_out")
+
+        self.db.add_all([
+            TagImplication(target_tags=[tag1], implied_tags=[tag_out]),
+            TagImplication(target_tags=[tag2], implied_tags=[tag_out]),
+            TagImplication(target_tags=[tag3], implied_tags=[tag_out]),
+        ])
+        self.db.commit()
+
+        # Test limit and X-Total-Count
+        resp = Response()
+        res_limit = asyncio.run(list_implications(limit=2, offset=0, response=resp, current_user=self.admin_user, db=self.db))
+        self.assertEqual(len(res_limit), 2)
+        self.assertIn("X-Total-Count", resp.headers)
+        total = int(resp.headers["X-Total-Count"])
+        self.assertGreaterEqual(total, 3)
+
+        # Test search
+        res_search = asyncio.run(list_implications(search="search_alpha", current_user=self.admin_user, db=self.db))
+        self.assertEqual(len(res_search), 1)
+        self.assertEqual(res_search[0].target_tags[0].name, "search_alpha")
 
     def test_list_implications_cleans_orphaned_entities(self):
         """Test list_implications purges implications left empty after target tag deletion."""
@@ -506,6 +536,191 @@ class TestTagImplications(BackupTestBase):
 
         self.assertIsNotNone(self.db.query(Tag).filter(Tag.name == "cat").first())
         self.assertIsNotNone(self.db.query(Tag).filter(Tag.name == "animal").first())
+
+    # Tag Implication Resolution Tests (resolve_implications & /expand endpoint)
+    def test_resolve_implications_chain_hierarchy(self):
+        """Verify deep multi-step implication chain resolution."""
+        chain = ["wolf", "canine_beast", "quadruped", "vertebrate", "creature"]
+        tag_objs = [self._create_tag(name) for name in chain]
+        for idx in range(len(tag_objs) - 1):
+            self.db.add(TagImplication(target_tags=[tag_objs[idx]], implied_tags=[tag_objs[idx + 1]]))
+        self.db.commit()
+
+        # From root of chain, all descendants are returned
+        result = resolve_implications(self.db, ["wolf"])
+        self.assertEqual(sorted(result), sorted(["canine_beast", "quadruped", "vertebrate", "creature"]))
+
+        # From midpoint of chain, only subsequent descendants are returned
+        result_mid = resolve_implications(self.db, ["quadruped"])
+        self.assertEqual(sorted(result_mid), sorted(["creature", "vertebrate"]))
+
+    def test_resolve_implications_max_depth_limit(self):
+        """Verify max_depth restricts the number of recursive expansion passes."""
+        chain = ["husky", "hound", "doggo", "carnivore", "eukaryote"]
+        tag_objs = [self._create_tag(name) for name in chain]
+        for idx in range(len(tag_objs) - 1):
+            self.db.add(TagImplication(target_tags=[tag_objs[idx]], implied_tags=[tag_objs[idx + 1]]))
+        self.db.commit()
+
+        # With max_depth=2, husky should expand to hound and doggo, but not carnivore or eukaryote
+        limited = resolve_implications(self.db, ["husky"], max_depth=2)
+        self.assertEqual(sorted(limited), ["doggo", "hound"])
+
+    def test_resolve_implications_wildcard_patterns_without_targets(self):
+        """Verify standalone pattern-based implications match wildcards and imply tags."""
+        clothing = self._create_tag("clothing")
+        female = self._create_tag("female")
+
+        self.db.add(TagImplication(target_tag_patterns=["*_dress"], implied_tags=[clothing]))
+        self.db.add(TagImplication(target_tag_patterns=["?maid"], implied_tags=[female]))
+        self.db.commit()
+
+        res = resolve_implications(self.db, ["summer_dress", "1maid"])
+        self.assertEqual(sorted(res), ["clothing", "female"])
+
+        # Matching only one pattern implies only that rule's tag
+        res_single = resolve_implications(self.db, ["summer_dress"])
+        self.assertEqual(res_single, ["clothing"])
+
+    def test_resolve_implications_conjunction_multiple_targets(self):
+        """Verify multi-target implications fire only when ALL target tags are present."""
+        winter = self._create_tag("winter")
+        coat = self._create_tag("coat")
+        warm = self._create_tag("warm_clothing")
+
+        self.db.add(TagImplication(target_tags=[winter, coat], implied_tags=[warm]))
+        self.db.commit()
+
+        # Incomplete target sets must not trigger the implication
+        self.assertEqual(resolve_implications(self.db, ["winter"]), [])
+        self.assertEqual(resolve_implications(self.db, ["coat"]), [])
+
+        # Full target set triggers the implication
+        self.assertEqual(resolve_implications(self.db, ["winter", "coat"]), ["warm_clothing"])
+
+    def test_resolve_implications_multi_tag_consequence(self):
+        """Verify an implication can expand to multiple implied tags in one rule."""
+        trigger = self._create_tag("twintails")
+        implied1 = self._create_tag("pigtails")
+        implied2 = self._create_tag("hairstyle")
+
+        self.db.add(TagImplication(target_tags=[trigger], implied_tags=[implied1, implied2]))
+        self.db.commit()
+
+        res = resolve_implications(self.db, ["twintails"])
+        self.assertEqual(sorted(res), ["hairstyle", "pigtails"])
+
+    def test_resolve_implications_duplicate_rules_deduplicated(self):
+        """Verify convergent rules pointing to the same implied tag produce deduplicated output."""
+        puppy = self._create_tag("puppy")
+        bunny = self._create_tag("bunny")
+        pet = self._create_tag("pet")
+
+        self.db.add(TagImplication(target_tags=[puppy], implied_tags=[pet]))
+        self.db.add(TagImplication(target_tags=[bunny], implied_tags=[pet]))
+        self.db.commit()
+
+        res = resolve_implications(self.db, ["puppy", "bunny"])
+        self.assertEqual(res, ["pet"])
+
+        # If the implied tag is already in input, nothing new should be returned
+        res_already_present = resolve_implications(self.db, ["puppy", "bunny", "pet"])
+        self.assertEqual(res_already_present, [])
+
+    def test_resolve_implications_hybrid_pattern_and_target(self):
+        """Verify rules requiring both explicit target tags and pattern matches."""
+        sword = self._create_tag("sword")
+        knight = self._create_tag("knight")
+
+        self.db.add(TagImplication(target_tags=[sword], target_tag_patterns=["*_armor"], implied_tags=[knight]))
+        self.db.commit()
+
+        # Both present -> matches
+        self.assertEqual(resolve_implications(self.db, ["sword", "steel_armor"]), ["knight"])
+
+        # Target present but pattern missing
+        self.assertEqual(resolve_implications(self.db, ["sword"]), [])
+        self.assertEqual(resolve_implications(self.db, ["sword", "steel_shield"]), [])
+
+        # Pattern present but target missing
+        self.assertEqual(resolve_implications(self.db, ["steel_armor"]), [])
+
+    def test_resolve_implications_cycle_safety(self):
+        """Verify cyclical implication graphs terminate cleanly without infinite loops."""
+        node_a = self._create_tag("cycle_alpha")
+        node_b = self._create_tag("cycle_beta")
+        node_c = self._create_tag("cycle_gamma")
+
+        self.db.add(TagImplication(target_tags=[node_a], implied_tags=[node_b]))
+        self.db.add(TagImplication(target_tags=[node_b], implied_tags=[node_c]))
+        self.db.add(TagImplication(target_tags=[node_c], implied_tags=[node_a]))
+        self.db.commit()
+
+        res = resolve_implications(self.db, ["cycle_alpha"])
+        self.assertEqual(sorted(res), ["cycle_beta", "cycle_gamma"])
+
+    def test_resolve_implications_reflexive_self_reference(self):
+        """Verify self-implicating rules (e.g. tag implies itself) do not yield new tags."""
+        stand = self._create_tag("standalone_tag")
+        self.db.add(TagImplication(target_tags=[stand], implied_tags=[stand]))
+        self.db.commit()
+
+        self.assertEqual(resolve_implications(self.db, ["standalone_tag"]), [])
+
+    def test_resolve_implications_empty_and_unknown_inputs(self):
+        """Verify empty lists, whitespace, or unrecognized tags return an empty list gracefully."""
+        self.assertEqual(resolve_implications(self.db, []), [])
+        self.assertEqual(resolve_implications(self.db, ["", "   "]), [])
+        self.assertEqual(resolve_implications(self.db, ["nonexistent_tag_xyz"]), [])
+
+    def test_expand_implications_api_endpoint(self):
+        """Verify the POST /api/tag-implications/expand route returns expected implied tags."""
+        tabby = self._create_tag("tabby")
+        hunter = self._create_tag("hunter")
+        self.db.add(TagImplication(target_tags=[tabby], implied_tags=[hunter]))
+        self.db.commit()
+
+        payload = ExpandImplicationsRequest(tags=["tabby"])
+        res = asyncio.run(expand_tag_implications(payload, db=self.db))
+        self.assertEqual(res, {"implied_tags": ["hunter"]})
+
+        empty_payload = ExpandImplicationsRequest(tags=[])
+        empty_res = asyncio.run(expand_tag_implications(empty_payload, db=self.db))
+        self.assertEqual(empty_res, {"implied_tags": []})
+
+    def test_simulate_apply_all_large_scale(self):
+        """Verify simulate_apply_all_implications performs efficiently with large rule sets."""
+        import time
+
+        # Create a hierarchy of tags and implications
+        root_tags = [self._create_tag(f"root_{i}") for i in range(200)]
+        child_tags = [self._create_tag(f"child_{i}") for i in range(200)]
+        grandchild_tags = [self._create_tag(f"grandchild_{i}") for i in range(200)]
+
+        implications = []
+        for i in range(200):
+            implications.append(TagImplication(target_tags=[root_tags[i]], implied_tags=[child_tags[i]]))
+            implications.append(TagImplication(target_tags=[child_tags[i]], implied_tags=[grandchild_tags[i]]))
+        self.db.add_all(implications)
+
+        # Create media items that have root tags
+        media_items = []
+        for i in range(100):
+            m = self._create_media(f"large_scale_{i}.jpg")
+            m.tags.append(root_tags[i])
+            media_items.append(m)
+        self.db.commit()
+
+        start = time.perf_counter()
+        result = asyncio.run(simulate_apply_all_implications(current_user=self.admin_user, db=self.db))
+        duration = time.perf_counter() - start
+
+        affected = result.get("affected_media", [])
+        self.assertEqual(len(affected), 100)
+        # Each media item with root_i should get both child_i and grandchild_i
+        self.assertEqual(affected[0]["added_tags"], [f"child_0", f"grandchild_0"])
+        # Performance check: 100 media with 400 chained implications should simulate well under 0.5s
+        self.assertLess(duration, 0.5)
 
 if __name__ == "__main__":
     unittest.main()
