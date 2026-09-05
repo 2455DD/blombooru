@@ -1,18 +1,18 @@
 import asyncio
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, model_validator
 from pydantic.types import conset, StringConstraints
-from sqlalchemy import cast, func, select, Text
-from sqlalchemy.orm import joinedload, Session
+from sqlalchemy import cast, func, or_, select, String
+from sqlalchemy.orm import selectinload, Session
 from typing import Annotated, Self
 
 from ..auth import require_admin_mode
 from ..database import get_db
 from ..models import blombooru_implication_implied, blombooru_implication_targets, Media, Tag, TagImplication, User 
 from ..utils.cache import invalidate_tag_cache
-from ..utils.tag_utils import expand_implications
+from ..utils.tag_utils import resolve_implications
 
 router = APIRouter(prefix="/api/tag-implications", tags=["tag-implications"])
 
@@ -74,30 +74,72 @@ def _clean_patterns(patterns: Optional[List[str]]) -> List[str]:
 
 @router.get("/", response_model=List[TagImplicationResponse])
 async def list_implications(
+    limit: Optional[int] = Query(default=None, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    search: Optional[str] = Query(default=None),
+    response: Response = Response(),
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db)
 ):
-    """List all tag implications."""
-    implications = db.query(TagImplication).all()
+    """List tag implications, optionally paginated and filtered by search term."""
+    # Clean up orphaned implications left empty by cascading tag deletions
+    potential_orphans = (
+        db.query(TagImplication)
+        .options(
+            selectinload(TagImplication.target_tags),
+            selectinload(TagImplication.implied_tags),
+        )
+        .filter(~TagImplication.target_tags.any() | ~TagImplication.implied_tags.any())
+        .all()
+    )
 
-    # Filter out implications where cascading tag deletion left them empty
-    results = []
-    for imp in implications:
+    had_deletions = False
+    for imp in potential_orphans:
         patterns = imp.target_tag_patterns or []
         has_targets = len(imp.target_tags) > 0 or len(patterns) > 0
         if not has_targets or len(imp.implied_tags) == 0:
             # Clean up orphaned implications
             db.delete(imp)
-            continue
-        results.append(imp)
+            had_deletions = True
 
-    if len(results) != len(implications):
+    if had_deletions:
         db.commit()
 
-    # Ensure target_tag_patterns is always a list in the response
+    clean_limit = limit if isinstance(limit, int) else None
+    clean_offset = offset if isinstance(offset, int) else 0
+    clean_search = search.strip() if isinstance(search, str) and search.strip() else None
+
+    query = db.query(TagImplication).options(
+        selectinload(TagImplication.target_tags),
+        selectinload(TagImplication.implied_tags),
+    )
+
+    if clean_search:
+        term = f"%{clean_search.lower()}%"
+        query = query.filter(
+            or_(
+                TagImplication.target_tags.any(func.lower(Tag.name).like(term)),
+                TagImplication.implied_tags.any(func.lower(Tag.name).like(term)),
+                cast(TagImplication.target_tag_patterns, String).ilike(term),
+            )
+        )
+
+    total_count = query.count() if (clean_limit is not None or response is not None) else None
+
+    query = query.order_by(TagImplication.id.desc())
+    if clean_offset:
+        query = query.offset(clean_offset)
+    if clean_limit is not None:
+        query = query.limit(clean_limit)
+
+    results = query.all()
+
     for imp in results:
         if imp.target_tag_patterns is None:
             imp.target_tag_patterns = []
+
+    if response is not None and total_count is not None:
+        response.headers["X-Total-Count"] = str(total_count)
 
     return results
 
@@ -230,6 +272,22 @@ async def delete_implication(
 
     return {"status": "success"}
 
+class ExpandImplicationsRequest(BaseModel):
+    tags: List[str]
+
+@router.post("/expand")
+async def expand_tag_implications(
+    data: ExpandImplicationsRequest,
+    db: Session = Depends(get_db),
+):
+    """Return additional tags implied by the active implication rules that are not already present in the input set."""
+    input_names = [t.strip().lower() for t in data.tags if t.strip()]
+    if not input_names:
+        return {"implied_tags": []}
+
+    implied = resolve_implications(db, input_names)
+    return {"implied_tags": sorted(implied)}
+
 @router.post("/simulate-apply-all")
 async def simulate_apply_all_implications(
     current_user: User = Depends(require_admin_mode),
@@ -243,29 +301,114 @@ async def simulate_apply_all_implications(
     loop = asyncio.get_event_loop()
 
     def do_simulate_apply_all():
-        implications = db.query(TagImplication).all()
-        if not implications:
+        import fnmatch
+        from collections import defaultdict, deque
+        from ..models import (
+            blombooru_implication_implied,
+            blombooru_implication_targets,
+            blombooru_media_tags,
+            Tag,
+            TagImplication,
+        )
+
+        # 1. Quick check if any implications exist
+        has_implications = db.execute(select(TagImplication.id).limit(1)).scalar_one_or_none()
+        if not has_implications:
             return []
 
-        media_items = db.query(Media).options(joinedload(Media.tags)).all()
-        affected_media = []
+        # 2. Bulk load tag id -> name mapping
+        tag_rows = db.execute(select(Tag.id, Tag.name)).all()
+        if not tag_rows:
+            return []
+        id_to_name = {tid: name for tid, name in tag_rows}
 
-        for media in media_items:
-            tag_dict = {t.id: t for t in media.tags}
-            original_tag_ids = set(tag_dict.keys())
-            
-            expand_implications(db, tag_dict, implications=implications)
-            
-            new_tag_ids = set(tag_dict.keys()) - original_tag_ids
+        # 3. Bulk load implication relationships from association tables
+        target_rows = db.execute(
+            select(blombooru_implication_targets.c.implication_id, blombooru_implication_targets.c.tag_id)
+        ).all()
+
+        implied_rows = db.execute(
+            select(blombooru_implication_implied.c.implication_id, blombooru_implication_implied.c.tag_id)
+        ).all()
+
+        pattern_rows = db.execute(
+            select(TagImplication.id, TagImplication.target_tag_patterns)
+            .where(TagImplication.target_tag_patterns.is_not(None))
+        ).all()
+
+        # Map implication_id -> set of implied tag_ids
+        imp_to_implied = defaultdict(set)
+        for imp_id, tag_id in implied_rows:
+            imp_to_implied[imp_id].add(tag_id)
+
+        # Build trigger graph: trigger_tag_id -> set of implied tag_ids
+        direct_graph = defaultdict(set)
+        for imp_id, tag_id in target_rows:
+            if imp_id in imp_to_implied:
+                direct_graph[tag_id].update(imp_to_implied[imp_id])
+
+        # Evaluate wildcard patterns across existing tags
+        if pattern_rows:
+            for imp_id, patterns in pattern_rows:
+                if not patterns or imp_id not in imp_to_implied:
+                    continue
+                rule_implied = imp_to_implied[imp_id]
+                for tid, name in tag_rows:
+                    if any(fnmatch.fnmatch(name, pat) for pat in patterns):
+                        direct_graph[tid].update(rule_implied)
+
+        if not direct_graph:
+            return []
+
+        # 4. Compute transitive closure for each tag with outgoing edges using BFS
+        closure = {}
+        for start_tag in direct_graph:
+            visited = set()
+            queue = deque([start_tag])
+            while queue:
+                curr = queue.popleft()
+                for nxt in direct_graph.get(curr, ()):
+                    if nxt not in visited and nxt != start_tag:
+                        visited.add(nxt)
+                        queue.append(nxt)
+            if visited:
+                closure[start_tag] = visited
+
+        if not closure:
+            return []
+
+        # 5. Bulk load media tags directly from association table
+        media_tag_rows = db.execute(
+            select(blombooru_media_tags.c.media_id, blombooru_media_tags.c.tag_id)
+            .order_by(blombooru_media_tags.c.media_id)
+        ).all()
+
+        if not media_tag_rows:
+            return []
+
+        # Group tag IDs by media_id
+        media_to_tags = defaultdict(set)
+        for m_id, t_id in media_tag_rows:
+            media_to_tags[m_id].add(t_id)
+
+        # 6. For each media item, compute newly implied tags from the closure
+        affected_media = []
+        for m_id, current_tag_ids in media_to_tags.items():
+            implied_ids = set()
+            for t_id in current_tag_ids:
+                if t_id in closure:
+                    implied_ids.update(closure[t_id])
+
+            new_tag_ids = implied_ids - current_tag_ids
             if new_tag_ids:
-                added_tags = [tag_dict[tid].name for tid in new_tag_ids]
-                affected_media.append({
-                    "media_id": media.id,
-                    "added_tags": added_tags
-                })
+                added_tags = sorted(id_to_name[tid] for tid in new_tag_ids if tid in id_to_name)
+                if added_tags:
+                    affected_media.append({
+                        "media_id": m_id,
+                        "added_tags": added_tags
+                    })
 
         return affected_media
 
     affected_media = await loop.run_in_executor(None, do_simulate_apply_all)
     return {"affected_media": affected_media}
-
