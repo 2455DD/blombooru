@@ -730,30 +730,51 @@ class BulkTagModalBase {
         return this.tagResolutionCache.get(tag.toLowerCase().trim());
     }
 
-    triggerValidation(input) {
-        if (this.tagInputHelper) {
-            const index = input.getAttribute('data-index');
-            let highlightTags = null;
-            if (index !== null && this.itemsData && this.itemsData[index]) {
-                const item = this.itemsData[index];
-                if (item.prefilledTags) {
-                    const prefilledSet = new Set(item.prefilledTags.map(t => t.toLowerCase()));
-                    const inputTags = this.tagInputHelper.getPlainTextFromDiv(input).split(/\s+/).filter(t => t.length > 0);
-                    highlightTags = new Set();
-                    for (const t of inputTags) {
-                        if (prefilledSet.has(t.toLowerCase())) {
-                            highlightTags.add(t.toLowerCase());
-                        }
-                    }
-                }
-            }
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 
-            this.tagInputHelper.validateAndStyleTags(input, {
-                validationCache: this.tagInputHelper.tagValidationCache,
-                checkFunction: (tag) => this.tagInputHelper.checkTagExists(tag),
-                highlightTags: highlightTags
-            });
+    getHighlightTagsForItem(inputElement) {
+        if (!inputElement) return null;
+        const rawIndex = inputElement.getAttribute('data-index');
+        if (rawIndex === null || rawIndex === undefined) return null;
+        const index = parseInt(rawIndex, 10);
+        if (isNaN(index) || !this.itemsData || !this.itemsData[index]) return null;
+
+        const item = this.itemsData[index];
+        const prefilledList = item.prefilledTags && item.prefilledTags.length > 0
+            ? item.prefilledTags
+            : (item.currentTags ? (item.newTags || []).filter(t => !new Set(item.currentTags.map(c => c.toLowerCase())).has(t.toLowerCase())) : null);
+        if (!prefilledList || prefilledList.length === 0) return null;
+
+        const prefilledSet = new Set(prefilledList.map(t => t.toLowerCase()));
+        const rawText = this.tagInputHelper ? this.tagInputHelper.getPlainTextFromDiv(inputElement) : (inputElement.innerText || inputElement.textContent || '');
+        const inputTags = rawText.split(/\s+/).filter(t => t.length > 0);
+        const highlightTags = new Set();
+        for (const t of inputTags) {
+            if (prefilledSet.has(t.toLowerCase())) {
+                highlightTags.add(t.toLowerCase());
+            }
         }
+        return highlightTags;
+    }
+
+    triggerValidation(input) {
+        if (!this.tagInputHelper || !input) return;
+        const highlightTags = this.getHighlightTagsForItem(input);
+
+        this.tagInputHelper.validateAndStyleTags(input, {
+            validationCache: this.tagInputHelper.tagValidationCache,
+            checkFunction: (tag) => {
+                const resolved = this.getResolvedTag ? this.getResolvedTag(tag) : null;
+                if (resolved !== null && resolved !== undefined) return true;
+                return this.tagInputHelper.checkTagExists(tag);
+            },
+            highlightTags: highlightTags
+        });
     }
 
     // ==================== Lazy Input Helpers ====================
@@ -782,28 +803,11 @@ class BulkTagModalBase {
             onValidate: () => { },
             validationCache: this.tagInputHelper.tagValidationCache,
             checkFunction: (tag) => {
-                const resolved = this.getResolvedTag(tag);
+                const resolved = this.getResolvedTag ? this.getResolvedTag(tag) : null;
                 if (resolved !== null && resolved !== undefined) return true;
                 return this.tagInputHelper.checkTagExists(tag);
             },
-            getHighlightTags: (inputElement) => {
-                const idx = inputElement.getAttribute('data-index');
-                if (idx !== null && this.itemsData && this.itemsData[idx]) {
-                    const item = this.itemsData[idx];
-                    if (!item.prefilledTags) return null;
-
-                    const prefilledSet = new Set(item.prefilledTags.map(t => t.toLowerCase()));
-                    const inputTags = this.tagInputHelper.getPlainTextFromDiv(inputElement).split(/\s+/).filter(t => t.length > 0);
-                    const highlightTags = new Set();
-                    for (const t of inputTags) {
-                        if (prefilledSet.has(t.toLowerCase())) {
-                            highlightTags.add(t.toLowerCase());
-                        }
-                    }
-                    return highlightTags;
-                }
-                return null;
-            }
+            getHighlightTags: (inputElement) => this.getHighlightTagsForItem(inputElement)
         });
 
         this.triggerValidation(input);
@@ -813,11 +817,24 @@ class BulkTagModalBase {
 
     renderItem(item, index) {
         const prefix = this.options.classPrefix;
-        const currentTagsDisplay = item.currentTags.length > 0
+        const currentTagsDisplay = item.currentTags && item.currentTags.length > 0
             ? item.currentTags.slice(0, 3).join(', ') + (item.currentTags.length > 3 ? ` (${window.i18n.t('bulk_modal.messages.tag_overflow', { count: item.currentTags.length - 3 })})` : '')
             : window.i18n.t('common.no_tags');
 
         const tagsToShow = item.newTags || [];
+
+        const prefilledList = item.prefilledTags && item.prefilledTags.length > 0
+            ? item.prefilledTags
+            : (item.currentTags ? tagsToShow.filter(t => !new Set(item.currentTags.map(c => c.toLowerCase())).has(t.toLowerCase())) : []);
+        const prefilledSet = new Set(prefilledList.map(t => t.toLowerCase()));
+
+        const renderedContent = tagsToShow.map(tag => {
+            const escaped = this.escapeHtml(tag);
+            if (prefilledSet.has(tag.toLowerCase())) {
+                return `<span class="new-tag">${escaped}</span>`;
+            }
+            return escaped;
+        }).join(' ');
 
         return `
             <div class="${prefix}-item surface-light p-3 border mb-3" data-index="${index}" style="content-visibility: auto; contain-intrinsic-size: auto 120px;">
@@ -851,7 +868,7 @@ class BulkTagModalBase {
                                 <div class="${prefix}-input w-full bg px-3 py-2.5 sm:py-2 border text-sm focus:outline-none focus:border-primary hover:border-primary transition-colors min-h-[44px] sm:min-h-[36px]" 
                                      contenteditable="true"
                                      data-index="${index}"
-                                     style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;">${tagsToShow.join(' ')}</div>
+                                     style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;">${renderedContent}</div>
                             </div>
                             
                             <!-- Action buttons -->
@@ -885,6 +902,8 @@ class BulkTagModalBase {
         container.scrollTop = 0;
         const html = this.itemsData.map((item, index) => this.renderItem(item, index)).join('');
         container.innerHTML = html;
+        const inputs = container.querySelectorAll(`.${prefix}-input`);
+        inputs.forEach(input => this.triggerValidation(input));
     }
 
     // ==================== Button Feedback ====================
