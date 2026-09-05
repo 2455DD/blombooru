@@ -87,9 +87,18 @@ class BulkManualTagEditorModal extends BulkTagModalBase {
             if (action === 'add') {
                 const toAdd = resolvedTags.filter(t => !currentSet.has(t.toLowerCase()));
                 item.newTags = [...currentTags, ...toAdd];
+                if (!item.prefilledTags) item.prefilledTags = [];
+                toAdd.forEach(t => {
+                    if (!item.prefilledTags.some(pt => pt.toLowerCase() === t.toLowerCase())) {
+                        item.prefilledTags.push(t);
+                    }
+                });
             } else {
                 const toRemoveSet = new Set(resolvedTags.map(t => t.toLowerCase()));
                 item.newTags = currentTags.filter(t => !toRemoveSet.has(t.toLowerCase()));
+                if (item.prefilledTags) {
+                    item.prefilledTags = item.prefilledTags.filter(t => !toRemoveSet.has(t.toLowerCase()));
+                }
             }
         });
 
