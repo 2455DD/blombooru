@@ -113,7 +113,7 @@ def resolve_implications(db: Session, tags: list[str], max_depth: int = 10) -> l
                     selectinload(TagImplication.target_tags),
                     selectinload(TagImplication.implied_tags),
                 )
-                .distinct()
+                .distinct(TagImplication.id)
             )
             if applied_implications:
                 stmt = stmt.where(~TagImplication.id.in_(applied_implications))
