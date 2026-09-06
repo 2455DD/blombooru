@@ -447,7 +447,7 @@ class TestTagImplications(BackupTestBase):
         self.assertEqual(tag_set, {})
 
         tag_set = {self.tag_cat.id: self.tag_cat}
-        expand_implications(self.db, tag_set, implications=[])
+        expand_implications(self.db, tag_set)
         self.assertEqual(tag_set, {self.tag_cat.id: self.tag_cat})
 
     # Media Workflow & Preview Integration Tests

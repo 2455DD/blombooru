@@ -458,6 +458,7 @@ def preview_or_create_tags(
 
     # Dry run
     import fnmatch
+    from sqlalchemy import select
     from ..models import TagImplication
     from ..schemas import ProposedTag
 
@@ -494,8 +495,15 @@ def preview_or_create_tags(
 
     if expand:
         expand_implications(db, tag_set)
-        implications = db.query(TagImplication).all()
-        for imp in implications:
+        pattern_only_implications = db.execute(
+            select(TagImplication)
+            .where(
+                TagImplication.target_tag_patterns.is_not(None),
+                ~TagImplication.target_tags.any(),
+            )
+            .options(selectinload(TagImplication.implied_tags))
+        ).scalars().all()
+        for imp in pattern_only_implications:
             if imp.target_tag_patterns:
                 for n_tag in new_tags:
                     if any(fnmatch.fnmatch(n_tag.name, pat) for pat in imp.target_tag_patterns):

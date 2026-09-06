@@ -1,11 +1,11 @@
 import fnmatch
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload, Session
 
-def resolve_aliases(db: Session, raw_names: List[str]) -> Dict[str, Tuple[str, str]]:
+def resolve_aliases(db: Session, raw_names: list[str]) -> Dict[str, Tuple[str, str]]:
     """Build an alias lookup map for a list of (already lowercased) tag names."""
     from ..models import TagAlias
 
@@ -18,31 +18,65 @@ def resolve_aliases(db: Session, raw_names: List[str]) -> Dict[str, Tuple[str, s
         for a in aliases
     }
 
-def expand_implications(db: Session, tag_set: Dict[int, object], implications: Optional[List[object]] = None) -> None:
+def expand_implications(db: Session, tag_set: Dict[int, object]) -> None:
     """Recursively expand tag implications into *tag_set*, mutating it in place."""
-    from ..models import TagImplication
+    from ..models import TagImplication, blombooru_implication_targets
 
-    if implications is None:
-        implications = db.query(TagImplication).all()
-    if not implications:
+    if not tag_set:
         return
+
+    # Load pattern implications once
+    pattern_rules = db.execute(
+        select(TagImplication)
+        .where(TagImplication.target_tag_patterns.is_not(None))
+        .options(selectinload(TagImplication.implied_tags))
+    ).scalars().all()
+
+    applied: set[int] = set()
 
     changed = True
     while changed:
         changed = False
+        current_ids = set(tag_set.keys())
         current_names = {t.name for t in tag_set.values()}
 
-        for imp in implications:
-            triggered = any(t.id in tag_set for t in imp.target_tags)
-            if not triggered and imp.target_tag_patterns:
-                triggered = any(
-                    fnmatch.fnmatch(tag_name, pattern)
-                    for tag_name in current_names
-                    for pattern in imp.target_tag_patterns
-                )
+        # Check pattern rules against current tag names
+        for rule in pattern_rules:
+            if rule.id in applied:
+                continue
+            patterns = rule.target_tag_patterns or []
+            if patterns and any(
+                fnmatch.fnmatch(name, pat)
+                for name in current_names
+                for pat in patterns
+            ):
+                applied.add(rule.id)
+                for implied_tag in rule.implied_tags:
+                    if implied_tag.id not in tag_set:
+                        tag_set[implied_tag.id] = implied_tag
+                        changed = True
 
-            if triggered:
-                for implied_tag in imp.implied_tags:
+        # Query only implications triggered by tags currently in the set
+        if current_ids:
+            stmt = (
+                select(TagImplication)
+                .join(
+                    blombooru_implication_targets,
+                    TagImplication.id == blombooru_implication_targets.c.implication_id,
+                )
+                .where(blombooru_implication_targets.c.tag_id.in_(current_ids))
+                .options(
+                    selectinload(TagImplication.implied_tags),
+                )
+            )
+            if applied:
+                stmt = stmt.where(~TagImplication.id.in_(applied))
+
+            for rule in db.execute(stmt).scalars().all():
+                if rule.id in applied:
+                    continue
+                applied.add(rule.id)
+                for implied_tag in rule.implied_tags:
                     if implied_tag.id not in tag_set:
                         tag_set[implied_tag.id] = implied_tag
                         changed = True
