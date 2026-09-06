@@ -135,7 +135,7 @@ class PendingEntitiesPanel {
                             title="${window.i18n.t('upload.pending.used_in_media', { count: tag.used_by.length })}">
                             ${window.i18n.t('upload.pending.media_count', { count: tag.used_by.length })}
                         </span>
-                        <button type="button" class="pending-remove-btn text-secondary hover:text-danger transition-colors cursor-pointer p-0.5 flex items-center justify-center">
+                        <button type="button" class="pending-remove-btn text-danger hover:text-danger transition-colors cursor-pointer p-0.5 flex items-center justify-center">
                             ${window.Icons.trash({ size: 12, class: 'transition-colors' })}
                         </button>
                     </div>
