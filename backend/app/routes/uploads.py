@@ -180,6 +180,7 @@ async def upload_files_to_session(
     base_album_ids: Optional[str] = Form(None),
     category_hints: Optional[str] = Form(None),
     user_assigned_tags: Optional[str] = Form(None),
+    base_description: Optional[str] = Form(None),
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
@@ -252,6 +253,7 @@ async def upload_files_to_session(
     base_tags_str = base_tags if isinstance(base_tags, str) else None
     base_album_ids_str = base_album_ids if isinstance(base_album_ids, str) else None
     category_hints_str = category_hints if isinstance(category_hints, str) else None
+    base_description_str = base_description if isinstance(base_description, str) else None
 
     # Parse initial candidate tags
     candidate_tag_names: List[str] = []
@@ -330,7 +332,7 @@ async def upload_files_to_session(
         "hash": file_hash,
         "rating": rating.value,
         "source": base_source_str or "",
-        "description": "",
+        "description": base_description_str or "",
         "tags": tags_list,
         "album_ids": album_ids,
         "suggested_album_path": None,

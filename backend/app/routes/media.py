@@ -538,6 +538,7 @@ def process_and_save_media(
     album_ids: Optional[str],
     source: Optional[str],
     category_hints: Optional[str],
+    description: Optional[str] = None,
 ) -> "MediaResponse":
     """Hash-check, thumbnail generation, DB insert, tag/album linking, and cache
     invalidation for a media file that is already on disk at *file_path*.
@@ -586,6 +587,7 @@ def process_and_save_media(
         duration=metadata["duration"],
         rating=rating,
         source=source if source else None,
+        description=description if description else None,
     )
 
     tag_ids_to_update = []
@@ -1256,6 +1258,7 @@ async def upload_media(
     album_ids: Optional[str] = Form(None),
     source: Optional[str] = Form(None),
     category_hints: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db)
 ):
@@ -1309,6 +1312,7 @@ async def upload_media(
                 album_ids=album_ids,
                 source=source,
                 category_hints=category_hints,
+                description=description,
             )
         except HTTPException as e:
             if e.status_code == 409:
@@ -1922,6 +1926,7 @@ async def finalize_chunked_upload(
     album_ids: Optional[str] = Form(None),
     source: Optional[str] = Form(None),
     category_hints: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
     current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db)
 ):
@@ -1975,6 +1980,7 @@ async def finalize_chunked_upload(
                 album_ids=album_ids,
                 source=source,
                 category_hints=category_hints,
+                description=description,
             )
         except HTTPException as e:
             if e.status_code == 409:
