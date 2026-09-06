@@ -153,8 +153,6 @@
             "archive_hint": "Archives will be extracted and all supported media files inside will be processed.",
             "drop_media": "Drop media files here or click to browse",
             "scan_untracked": "Scan for Untracked Media",
-            "supported_images": "Supported image formats: JPG/JPEG, PNG, GIF, WEBP.",
-            "supported_videos": "Supported video formats: MP4, WEBM.",
             "title": "Media Management",
             "total_gifs": "Total GIFs",
             "total_images": "Total Images",

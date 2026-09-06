@@ -84,9 +84,6 @@ class UpdatePostDeviceUpload extends UpdatePostModalBase {
                             <p id="upm-drop-label" class="text-xs font-medium text-center">
                                 ${window.i18n.t('modal.update_post.drop_file_here')}
                             </p>
-                            <p class="text-[11px] text-secondary text-center">
-                                ${window.i18n.t('admin.media_management.supported_images')} / ${window.i18n.t('admin.media_management.supported_videos')}
-                            </p>
                         </div>
                     </div>
 
