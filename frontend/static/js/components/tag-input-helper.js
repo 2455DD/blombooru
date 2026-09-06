@@ -2,6 +2,7 @@ class TagInputHelper {
     constructor() {
         this.tagValidationCache = new Map();
         this.validationTimeouts = new Map();
+        this.abortControllers = new Map();
 
         window.addEventListener('tagCreated', (e) => {
             if (e.detail && e.detail.name) {
@@ -302,6 +303,14 @@ class TagInputHelper {
 
         if (!inputElement) return;
 
+        // Abort and replace any existing listeners for this inputId to prevent duplicates
+        if (this.abortControllers.has(inputId)) {
+            this.abortControllers.get(inputId).abort();
+        }
+        const controller = new AbortController();
+        const { signal } = controller;
+        this.abortControllers.set(inputId, controller);
+
         // Strip IDE-injected whitespace (newlines/indents) from empty inputs
         if (inputElement.textContent.trim() === '') {
             inputElement.innerHTML = '';
@@ -324,7 +333,7 @@ class TagInputHelper {
                 if (onValidate) onValidate();
             }, validateDelay);
             this.validationTimeouts.set(inputId, timeout);
-        });
+        }, { signal });
 
         // Immediate validation and implications expansion on space
         inputElement.addEventListener('keyup', async (e) => {
@@ -356,21 +365,21 @@ class TagInputHelper {
                 }
                 if (onValidate) onValidate();
             }
-        });
+        }, { signal });
 
         // Prevent default Enter behavior
         inputElement.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
             }
-        });
+        }, { signal });
 
         // Paste as plain text
         inputElement.addEventListener('paste', (e) => {
             e.preventDefault();
             const text = e.clipboardData.getData('text/plain');
             document.execCommand('insertText', false, text);
-        });
+        }, { signal });
     }
 
     // Get valid tags from input (filter out invalid ones)
@@ -401,6 +410,10 @@ class TagInputHelper {
             clearTimeout(timeout);
         }
         this.validationTimeouts.clear();
+        for (const controller of this.abortControllers.values()) {
+            controller.abort();
+        }
+        this.abortControllers.clear();
     }
 
     // Cleanup
