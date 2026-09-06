@@ -389,6 +389,7 @@ class UploadUploaderShell {
             baseSource: metadata.source || '',
             baseTags: (metadata.tags || []).join(' '),
             baseAlbumIds: metadata.album_ids || [],
+            baseDescription: metadata.description || '',
             categoryHints: metadata.categoryHints || null,
             userAssignedTags: metadata.userAssignedTags || null,
         });

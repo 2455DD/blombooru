@@ -81,6 +81,9 @@ class UploadSession {
         if (options.baseAlbumIds && options.baseAlbumIds.length > 0) {
             formData.append('base_album_ids', options.baseAlbumIds.join(','));
         }
+        if (options.baseDescription) {
+            formData.append('base_description', options.baseDescription);
+        }
         if (options.categoryHints) {
             formData.append('category_hints', JSON.stringify(options.categoryHints));
         }
@@ -127,7 +130,7 @@ class UploadSession {
         return updated;
     }
 
-    async updateItem(itemId, updateData) {
+    async updateItem(itemId, updateData, { silent = false } = {}) {
         if (!this.sessionId) return null;
 
         const response = await fetch(`/api/uploads/sessions/${this.sessionId}/items/${itemId}`, {
@@ -143,7 +146,9 @@ class UploadSession {
 
         const updated = await response.json();
         this.items.set(itemId, updated);
-        this.emit('itemUpdated', updated);
+        if (!silent) {
+            this.emit('itemUpdated', updated);
+        }
         return updated;
     }
 

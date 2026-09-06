@@ -592,7 +592,8 @@ class UploadMediaEditor {
         const commonTagsContainer = this.container.querySelector('#editor-bulk-common-tags-chips');
         if (commonTagsContainer && typeof TagPreview !== 'undefined') {
             this.bulkTagPreview = new TagPreview(commonTagsContainer, {
-                allowCategoryChange: false
+                allowCategoryChange: false,
+                resolveAliases: false,
             });
             this.bulkTagPreview.setTags(this.getCommonTags());
         }
@@ -673,7 +674,7 @@ class UploadMediaEditor {
             this.singleRatingSelect = new CustomSelect(ratingEl);
             ratingEl.addEventListener('change', (e) => {
                 item.rating = e.detail.value;
-                this.session.updateItem(item.item_id, { rating: item.rating });
+                this.session.updateItem(item.item_id, { rating: item.rating }, { silent: true });
                 if (this.options.onItemChanged) this.options.onItemChanged(item);
             });
         }
@@ -720,6 +721,7 @@ class UploadMediaEditor {
         if (previewEl && typeof TagPreview !== 'undefined') {
             this.singleTagPreview = new TagPreview(previewEl, {
                 allowCategoryChange: true,
+                resolveAliases: false,
                 onCategoryChange: async (tag, newCat) => {
                     await this.session.updatePendingTag(tag.name, { category: newCat });
                     // session.updatePendingTag automatically triggers session refresh and events
@@ -733,7 +735,7 @@ class UploadMediaEditor {
         const tagsInput = this.container.querySelector('#editor-single-tags-input');
         if (tagsInput) {
             this.tagInputHelper.setupTagInput(tagsInput, 'editor-single-tags', {
-                validateDelay: 400,
+                validateDelay: 200,
                 onValidate: () => {
                     this.handleSingleTagsChanged(item, tagsInput);
                 },
@@ -746,10 +748,6 @@ class UploadMediaEditor {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                 }
-            });
-
-            tagsInput.addEventListener('input', () => {
-                this.updateSingleFinalTagsPreview(item, tagsInput);
             });
 
             if (typeof TagAutocomplete !== 'undefined') {
@@ -808,7 +806,7 @@ class UploadMediaEditor {
         if (!this.singleTagPreview || !tagsInput) return;
         const text = this.tagInputHelper ? this.tagInputHelper.getPlainTextFromDiv(tagsInput) : tagsInput.textContent;
         const tagNames = text.trim().split(/\s+/).filter(Boolean);
-        
+
         const previewTags = tagNames.map(n => {
             const existing = (item?.tags || []).find(t => t && t.name && t.name.toLowerCase() === n.toLowerCase());
             return existing ? existing : { name: n };
@@ -817,7 +815,7 @@ class UploadMediaEditor {
         this.singleTagPreview.setTags(previewTags);
     }
 
-    async handleSingleTagsChanged(item, tagsInput) {
+    handleSingleTagsChanged(item, tagsInput) {
         const text = this.tagInputHelper ? this.tagInputHelper.getPlainTextFromDiv(tagsInput) : tagsInput.textContent;
         const tagNames = text.trim().split(/\s+/).filter(Boolean);
 
@@ -826,23 +824,29 @@ class UploadMediaEditor {
             return existing ? existing : { name: n };
         });
 
-        const updated = await this.session.updateItem(item.item_id, {
-            tags: itemTags
-        });
-
-        if (updated && updated.tags) {
-            item.tags = updated.tags;
-            if (this.singleTagPreview) {
-                this.singleTagPreview.setTags(item.tags);
-            }
+        // Update preview optimistically with local data immediately
+        if (this.singleTagPreview) {
+            this.singleTagPreview.setTags(itemTags);
         }
-        if (this.options.onItemChanged) this.options.onItemChanged(item);
+
+        // Debounce the actual PATCH so rapid keystrokes don't flood the backend
+        clearTimeout(this.tagSaveTimeout);
+        this.tagSaveTimeout = setTimeout(async () => {
+            const updated = await this.session.updateItem(item.item_id, { tags: itemTags });
+            if (updated && updated.tags) {
+                item.tags = updated.tags;
+                if (this.singleTagPreview) {
+                    this.singleTagPreview.setTags(item.tags);
+                }
+            }
+            if (this.options.onItemChanged) this.options.onItemChanged(item);
+        }, 500);
     }
 
     debouncedSave(itemId, data) {
         clearTimeout(this.saveTimeout);
         this.saveTimeout = setTimeout(() => {
-            this.session.updateItem(itemId, data);
+            this.session.updateItem(itemId, data, { silent: true });
         }, 500);
     }
 }
