@@ -4,6 +4,7 @@ class TagImplicationManager {
         if (!this.form) return;
 
         this.tableBody = document.querySelector('#tag-implication-table tbody');
+        this.tableScroller = this.tableBody ? this.tableBody.closest('.overflow-y-auto') : null;
         this.targetInput = document.getElementById('tag-implication-target');
         this.impliedInput = document.getElementById('tag-implication-implies');
         this.saveBtn = this.form.querySelector('button[type="submit"]');
@@ -140,6 +141,7 @@ class TagImplicationManager {
             this.implications = implications;
             this.renderTable(implications);
             this.renderPagination();
+            if (this.tableScroller) this.tableScroller.scrollTop = 0;
 
             // Show search bar once we know there are enough implications to warrant it
             if (this.searchBar) {
