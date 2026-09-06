@@ -206,27 +206,27 @@
                 "error_proxy_failed": "Kunde inte hämta bilden: {error}"
             },
             "url_import": {
-                "hint": "",
+                "hint": "Klistra in en URL till ett booru-inlägg eller en direktlänk till en bild eller video. Booru-länkar importerar taggar, betyg, källa osv. automatiskt.",
                 "fetch": "Hämta",
                 "fetching": "Hämtar...",
                 "add_to_queue": "Lägg till i uppladdningskö",
                 "added_to_queue": "Lagt till i uppladdningskö",
-                "fetch_error": "",
-                "already_in_queue": "",
-                "download_error": "",
-                "error_invalid_url": "",
-                "error_access_denied": "",
-                "error_not_found": "",
-                "error_unsupported_type": "",
-                "error_timeout": "",
-                "error_connection": "",
-                "error_request": "",
-                "error_http": "",
-                "error_ssrf_blocked": "",
-                "error_fetch_failed": "",
-                "error_proxy_failed": "",
-                "error_empty_file": "",
-                "error_import_failed": ""
+                "fetch_error": "Kunde inte hämta media",
+                "already_in_queue": "Den här filen finns redan i uppladdningskön",
+                "download_error": "Kunde inte ladda ned mediefil",
+                "error_invalid_url": "Ogiltig URL. Måste vara en direkt http- eller https-länk.",
+                "error_access_denied": "Åtkomst nekad av fjärrservern (403). Webbplatsen kan kräva inloggning.",
+                "error_not_found": "Media hittades inte på denna URL (404)",
+                "error_unsupported_type": "Filtypen stöds inte. Se listan ovan för format som stöds.",
+                "error_timeout": "Tidsgränsen överskreds vid kontakt med fjärrservern",
+                "error_connection": "Kunde inte ansluta till fjärrservern",
+                "error_request": "Begäran misslyckades: {error}",
+                "error_http": "Fjärrservern returnerade fel {error}",
+                "error_ssrf_blocked": "Denna URL är inte tillåten av säkerhetsskäl",
+                "error_fetch_failed": "Kunde inte kontrollera URL: {error}",
+                "error_proxy_failed": "Kunde inte ladda ned filen: {error}",
+                "error_empty_file": "Fjärrfilen är tom",
+                "error_import_failed": "Importen misslyckades: {error}"
             }
         },
         "messages": {
@@ -712,10 +712,10 @@
         "select_all": "Välj alla",
         "selecting_all": "Väljer alla...",
         "sort_by": "Sortera efter",
-        "sort_random": "",
-        "sort_regen_random": "",
-        "sort_tag_count": "",
-        "sort_toggle_order": ""
+        "sort_random": "Slumpmässig",
+        "sort_regen_random": "Slumpa igen",
+        "sort_tag_count": "Antal taggar",
+        "sort_toggle_order": "Växla sorteringsordning"
     },
     "login": {
         "enter_credentials": "Ange dina uppgifter för att komma åt {app_name}",
@@ -1169,12 +1169,12 @@
         "view_original": "Visa original"
     },
     "tags_gallery": {
-        "sort_created_at": "",
-        "sort_tag_name": "",
-        "sort_post_count": "",
-        "sort_category": "",
-        "failed_load_list": "",
-        "no_visible_tags": ""
+        "sort_created_at": "Skapandedatum",
+        "sort_tag_name": "Taggnamn",
+        "sort_post_count": "Antal inlägg",
+        "sort_category": "Kategori",
+        "failed_load_list": "Kunde inte ladda taggar",
+        "no_visible_tags": "Inga synliga taggar hittades"
     },
     "upload": {
         "base_settings": {
