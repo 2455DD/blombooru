@@ -74,7 +74,6 @@ const STATIC_ASSETS = [
     '/static/js/upload/upload-uploader-shell.js',
     '/static/js/admin/admin.js',
     '/static/js/admin/upload.js',
-    '/static/js/admin/booru-import.js',
     '/static/js/admin/booru-config.js',
     '/static/js/admin/url-import.js',
     '/static/js/admin/tag-implications.js',

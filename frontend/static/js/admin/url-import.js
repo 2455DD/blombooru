@@ -1,9 +1,7 @@
 class UrlImporter {
     constructor(uploader) {
         this.uploader = uploader;
-        this.currentMedia = null;
         this.isFetching = false;
-        this.isAdding = false;
 
         this.container = document.getElementById('url-import-section');
         if (this.container) {
@@ -14,7 +12,6 @@ class UrlImporter {
     init() {
         this.urlInput = this.container.querySelector('#url-import-input');
         this.fetchBtn = this.container.querySelector('#url-import-fetch-btn');
-        this.previewArea = this.container.querySelector('#url-import-preview-area');
         this.statusArea = this.container.querySelector('#url-import-status');
 
         if (this.fetchBtn) {
@@ -48,13 +45,6 @@ class UrlImporter {
         this.statusArea.innerHTML = '';
     }
 
-    hidePreview() {
-        if (this.previewArea) {
-            this.previewArea.style.display = 'none';
-            this.previewArea.innerHTML = '';
-        }
-    }
-
     async fetchMedia() {
         const url = this.urlInput?.value?.trim();
         if (!url) return;
@@ -62,7 +52,6 @@ class UrlImporter {
         if (this.isFetching) return;
         this.isFetching = true;
         this.clearStatus();
-        this.hidePreview();
 
         this.showStatus(window.i18n.t('admin.media_management.url_import.fetching'), 'info');
         this.fetchBtn.disabled = true;
@@ -76,171 +65,82 @@ class UrlImporter {
 
             if (!response.ok) {
                 const error = await response.json().catch(() => ({}));
-                throw new Error(error.detail || window.i18n.t('admin.media_management.url_import.fetch_error'));
+                if (response.status === 403 || (error.detail && error.detail.includes('403'))) {
+                    throw new Error('errors.error_403');
+                }
+                throw new Error(error.detail || 'admin.media_management.url_import.fetch_error');
             }
 
-            this.currentMedia = await response.json();
-            this.renderPreview(this.currentMedia);
-            this.clearStatus();
+            const media = await response.json();
+            await this.addToQueue(media);
+            this.showStatus(window.i18n.t('admin.media_management.url_import.added_to_queue'), 'success');
+            if (this.urlInput) this.urlInput.value = '';
+
         } catch (e) {
             console.error('URL import fetch error:', e);
-            this.showStatus(
-                window.i18n.t('admin.media_management.url_import.fetch_error') + ': ' + window.i18n.t(e.message),
-                'error'
-            );
+            // Some errors are just simple strings, others are translation keys
+            let errorMsg = e.message;
+            if (errorMsg.includes('.') && !errorMsg.includes(' ')) {
+                errorMsg = window.i18n.t(errorMsg) || errorMsg;
+            } else if (errorMsg && errorMsg !== '') {
+                // Might be literal error from API, try translating it if possible, else use literal
+                errorMsg = window.i18n.t(errorMsg) === errorMsg ? errorMsg : window.i18n.t(errorMsg);
+            }
+            this.showStatus(errorMsg, 'error');
         } finally {
             this.isFetching = false;
             this.fetchBtn.disabled = false;
         }
     }
 
-    renderPreview(media) {
-        if (!this.previewArea) return;
+    async addToQueue(media) {
+        if (!media || !this.uploader) return;
 
         const proxyUrl = `/api/media/url-import/proxy?url=${encodeURIComponent(media.file_url)}`;
-        const skeletonStyle = "background-image: linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--surface-light), var(--surface) 40%) 50%, var(--surface) 100%); background-size: 200% 100%; animation: skeleton-wave 2s infinite linear;";
-        const clearSkeleton = "this.closest('#url-import-thumb-wrap').style.animation='none'; this.closest('#url-import-thumb-wrap').style.backgroundImage='none';";
+        const response = await fetch(proxyUrl);
 
-        const previewHtml = media.is_video
-            ? `<div class="w-32 h-32 surface border relative overflow-hidden" style="${skeletonStyle}" id="url-import-thumb-wrap">
-                    <video src="${proxyUrl}" class="w-full h-full object-contain opacity-0 transition-opacity duration-300" muted
-                        onloadeddata="this.style.opacity='1'; ${clearSkeleton}"
-                        onerror="this.style.display='none'; ${clearSkeleton}"></video>
-               </div>`
-            : `<div class="w-32 h-32 surface border relative overflow-hidden" style="${skeletonStyle}" id="url-import-thumb-wrap">
-                    <img src="${proxyUrl}" alt="Preview" class="w-full h-full object-contain opacity-0 transition-opacity duration-300"
-                        onload="this.style.opacity='1'; ${clearSkeleton}"
-                        onerror="this.style.display='none'; ${clearSkeleton}">
-               </div>`;
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || 'admin.media_management.url_import.download_error');
+        }
 
-        this.previewArea.innerHTML = `
-            <div class="bg surface border p-4">
-                <div class="flex flex-col sm:flex-row gap-4">
-                    <div class="flex-shrink-0">
-                        ${previewHtml}
-                    </div>
-                    <div class="flex-1 min-w-0 text-xs space-y-2">
-                        <div><strong>${window.i18n.t('media.info.filename')}:</strong> ${this.escapeHtml(media.filename)}</div>
-                        <div><strong>${window.i18n.t('media.info.type')}:</strong> ${this.escapeHtml(media.content_type)}</div>
-                        <div><strong>${window.i18n.t('media.info.size')}:</strong> ${this.formatFileSize(media.file_size)}</div>
-                        <div class="break-all"><strong>${window.i18n.t('media.info.source')}:</strong> ${this.escapeHtml(this.truncateUrl(media.file_url, 80))}</div>
-                    </div>
-                </div>
-                <div class="flex flex-col sm:flex-row gap-2 mt-4">
-                    <button id="url-import-cancel-btn" class="btn-danger px-4 py-2 font-medium cursor-pointer">
-                        ${window.i18n.t('common.cancel')}
-                    </button>
-                    <button id="url-import-queue-btn" class="btn-primary flex-1 px-4 py-2 font-medium cursor-pointer">
-                        ${window.i18n.t('admin.media_management.booru_import.add_to_queue')}
-                    </button>
-                </div>
-            </div>
-        `;
+        const blob = await response.blob();
+        const mimeType = media.content_type || blob.type || "application/octet-stream";
+        let filename = media.filename || "downloaded_media";
+        const file = new File([blob], filename, { type: mimeType });
 
-        this.previewArea.style.display = 'block';
+        if (!this.uploader.isValidFile(file)) {
+            throw new Error('admin.media_management.url_import.error_unsupported_type');
+        }
 
-        this.previewArea.querySelector('#url-import-cancel-btn')?.addEventListener('click', () => {
-            this.hidePreview();
-            this.currentMedia = null;
-        });
+        let importOptions = {
+            rating: this.uploader.baseRating,
+            source: media.file_url,
+            tags: [],
+        };
 
-        this.previewArea.querySelector('#url-import-queue-btn')?.addEventListener('click', () => {
-            this.addToQueue();
-        });
-
-        const previewEl = this.previewArea.querySelector('#url-import-thumb-wrap img, #url-import-thumb-wrap video');
-        if (previewEl) {
-            previewEl.style.cursor = 'pointer';
-            previewEl.addEventListener('click', () => {
-                if (this.uploader && this.uploader.fullscreenViewer) {
-                    this.uploader.fullscreenViewer.open(proxyUrl, media.is_video);
+        if (media.is_booru_post) {
+            const tags = [];
+            const categoryHints = {};
+            if (media.tags) {
+                for (const t of media.tags) {
+                    tags.push(t.name);
+                    categoryHints[t.name.toLowerCase()] = t.category;
                 }
-            });
-        }
-    }
-
-    async addToQueue() {
-        if (!this.currentMedia || !this.uploader || this.isAdding) return;
-
-        const media = this.currentMedia;
-        const queueBtn = this.previewArea?.querySelector('#url-import-queue-btn');
-
-        this.isAdding = true;
-        if (queueBtn) {
-            queueBtn.disabled = true;
-            queueBtn.textContent = window.i18n.t('common.loading');
-        }
-
-        try {
-            const proxyUrl = `/api/media/url-import/proxy?url=${encodeURIComponent(media.file_url)}`;
-            const response = await fetch(proxyUrl);
-
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({}));
-                throw new Error(error.detail || window.i18n.t('admin.media_management.url_import.download_error'));
             }
 
-            const blob = await response.blob();
-            const mimeType = media.content_type || blob.type;
-            const file = new File([blob], media.filename, { type: mimeType });
-
-            if (!this.uploader.isValidFile(file)) {
-                throw new Error(window.i18n.t('admin.media_management.url_import.error_unsupported_type'));
-            }
-
-            const hash = await this.uploader.computeFileHash(file);
-            if (this.uploader.fileHashes.has(hash)) {
-                this.showStatus(window.i18n.t('admin.media_management.url_import.already_in_queue'), 'error');
-                return;
-            }
-
-            await this.uploader.addBooruImport(file, {
-                rating: this.uploader.baseRating,
-                source: media.file_url,
-                tags: [],
-            });
-
-            this.showStatus(
-                window.i18n.t('admin.media_management.booru_import.added_to_queue'),
-                'success'
-            );
-
-            this.hidePreview();
-            this.currentMedia = null;
-            if (this.urlInput) this.urlInput.value = '';
-        } catch (e) {
-            console.error('URL import queue error:', e);
-            this.showStatus(window.i18n.t(e.message), 'error');
-        } finally {
-            this.isAdding = false;
-            if (queueBtn) {
-                queueBtn.disabled = false;
-                queueBtn.textContent = window.i18n.t('admin.media_management.booru_import.add_to_queue');
-            }
+            importOptions = {
+                rating: media.rating,
+                source: media.source || media.booru_url,
+                description: media.description,
+                tags: tags,
+                categoryHints: categoryHints,
+                userAssignedTags: [],
+                autoCreateTags: false,
+            };
         }
-    }
 
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    truncateUrl(url, maxLen = 30) {
-        try {
-            const parsed = new URL(url);
-            const display = parsed.hostname + parsed.pathname;
-            return display.length > maxLen ? display.substring(0, maxLen) + '…' : display;
-        } catch {
-            return url.length > maxLen ? url.substring(0, maxLen) + '…' : url;
-        }
-    }
-
-    formatFileSize(bytes) {
-        if (!bytes) return '—';
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        await this.uploader.addBooruImport(file, importOptions);
     }
 }
 
