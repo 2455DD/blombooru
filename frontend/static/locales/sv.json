@@ -1207,9 +1207,7 @@
             "source_applied": "Käll-URL applicerad på valda objekt",
             "description_applied": "Beskrivning applicerad på valda objekt",
             "album_added": "Album lades till för valda objekt",
-            "tags_added": "Lade till {count} tagg(ar) till valda objekt",
-            "common_tags": "Gemensamma taggar",
-            "tags_removed": "Tog bort {count} tagg(ar) från valda objekt"
+            "common_tags": "Gemensamma taggar"
         },
         "progress": {
             "duplicates_skipped": "{count} dubblett(er) hoppades över.",

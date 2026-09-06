@@ -9,6 +9,11 @@ class UploadMediaEditor {
         this.fullscreenViewer = options.fullscreenViewer || null;
         this.allAlbums = options.allAlbums || [];
         this.saveTimeout = null;
+        this.tagSaveTimeout = null;
+        this.bulkTagSaveTimeout = null;
+        this.bulkTagUpdateChain = null;
+        this.lastBulkTagNames = null;
+        this.bulkCommonTagsMap = null;
 
         this.singleRatingSelect = null;
         this.singleAlbumSelect = null;
@@ -65,8 +70,9 @@ class UploadMediaEditor {
     }
 
     render() {
-        const count = this.selectedIds.size;
+        clearTimeout(this.bulkTagSaveTimeout);
 
+        const count = this.selectedIds.size;
         if (count === 0) {
             this.renderEmptyState();
             return;
@@ -124,6 +130,8 @@ class UploadMediaEditor {
     }
 
     renderSingleEditor(item) {
+        clearTimeout(this.bulkTagSaveTimeout);
+
         const allTags = item.tags || [];
         const tagsPlainText = allTags.map(t => t.name).join(' ');
         const hasAlbums = item.album_ids && item.album_ids.length > 0;
@@ -293,9 +301,13 @@ class UploadMediaEditor {
     }
 
     renderBulkEditor() {
+        clearTimeout(this.bulkTagSaveTimeout);
+
         const count = this.selectedIds.size;
         const shared = this.getSharedValues();
         const commonAlbumIds = this.getCommonAlbumIds();
+        const commonTags = this.getCommonTags();
+        const tagsPlainText = commonTags.map(t => t.name).join(' ');
         const descPlaceholder = window.i18n.t('media.info.description_placeholder');
 
         this.container.innerHTML = `
@@ -391,23 +403,15 @@ class UploadMediaEditor {
                     </div>
                 </div>
 
-                <!-- Bulk Add / Remove Tags -->
+                <!-- Tags Input -->
                 <div class="mb-3">
                     <label class="block text-xs font-bold mb-1">
                         ${window.i18n.t('common.tags')}
                     </label>
-                    <div class="flex items-center gap-1.5">
-                        <div class="relative flex-1">
-                            <div id="editor-bulk-tags-input" contenteditable="true" data-placeholder="original highres cat_ears"
-                                class="w-full bg px-3 py-1.5 border text-xs focus:outline-none focus:border-primary hover:border-primary transition-colors min-h-7.5"
-                                style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;"></div>
-                        </div>
-                        <button type="button" id="editor-bulk-tags-add-btn" class="btn-primary text-xs px-3 py-1.5 cursor-pointer">
-                            ${window.i18n.t('common.add')}
-                        </button>
-                        <button type="button" id="editor-bulk-tags-remove-btn" class="btn-danger text-xs px-3 py-1.5 cursor-pointer">
-                            ${window.i18n.t('common.remove')}
-                        </button>
+                    <div class="relative">
+                        <div id="editor-bulk-tags-input" contenteditable="true" data-placeholder="original highres cat_ears"
+                            class="w-full bg px-3 py-1.5 border text-xs focus:outline-none focus:border-primary hover:border-primary transition-colors min-h-7.5"
+                            style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;">${this.escapeHtml(tagsPlainText)}</div>
                     </div>
                 </div>
 
@@ -426,6 +430,12 @@ class UploadMediaEditor {
 
     setupBulkEvents() {
         const itemIds = Array.from(this.selectedIds);
+
+        // Baseline tracking to diff the tag input
+        const commonTags = this.getCommonTags();
+        this.lastBulkTagNames = new Set(commonTags.map(t => t.name.toLowerCase()));
+        this.bulkCommonTagsMap = new Map(commonTags.map(t => [t.name.toLowerCase(), t]));
+        this.bulkTagUpdateChain = Promise.resolve();
 
         // Bulk Delete
         const removeBulkBtn = this.container.querySelector('#editor-remove-bulk-btn');
@@ -527,15 +537,31 @@ class UploadMediaEditor {
             });
         }
 
+        // Common Tags Preview Component
+        const commonTagsContainer = this.container.querySelector('#editor-bulk-common-tags-chips');
+        if (commonTagsContainer && typeof TagPreview !== 'undefined') {
+            this.bulkTagPreview = new TagPreview(commonTagsContainer, {
+                allowCategoryChange: true,
+                resolveAliases: false,
+                onCategoryChange: async (tag, newCat) => {
+                    await this.session.updatePendingTag(tag.name, { category: newCat });
+                    if (this.options.onItemChanged) this.options.onItemChanged();
+                }
+            });
+            this.bulkTagPreview.setTags(commonTags);
+        }
+
         // Bulk Tags Input
         const bulkTagsInput = this.container.querySelector('#editor-bulk-tags-input');
-        const bulkTagsAddBtn = this.container.querySelector('#editor-bulk-tags-add-btn');
-        const bulkTagsRemoveBtn = this.container.querySelector('#editor-bulk-tags-remove-btn');
-
         if (bulkTagsInput) {
             this.tagInputHelper.setupTagInput(bulkTagsInput, 'editor-bulk-tags', {
-                validateDelay: 400,
+                validateDelay: 200,
+                onValidate: () => {
+                    this.handleBulkTagsChanged(itemIds, bulkTagsInput);
+                },
             });
+
+            this.tagInputHelper.validateAndStyleTags(bulkTagsInput);
 
             bulkTagsInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -551,51 +577,11 @@ class UploadMediaEditor {
                     onSelect: () => {
                         setTimeout(() => {
                             this.tagInputHelper.validateAndStyleTags(bulkTagsInput);
+                            this.handleBulkTagsChanged(itemIds, bulkTagsInput);
                         }, 100);
                     },
                 });
             }
-
-            const applyBulkTagsAdd = async () => {
-                const text = this.tagInputHelper ? this.tagInputHelper.getPlainTextFromDiv(bulkTagsInput) : bulkTagsInput.textContent;
-                const newTagNames = text.trim().split(/\s+/).filter(Boolean);
-                if (newTagNames.length > 0 && itemIds.length > 0) {
-                    await this.session.bulkUpdate(itemIds, { add_tags: newTagNames });
-                    this.refreshBulkCommonTags();
-                    bulkTagsInput.innerHTML = '';
-                    if (window.app && window.app.showNotification) {
-                        window.app.showNotification(window.i18n.t('upload.bulk.tags_added', { count: newTagNames.length }), 'success');
-                    }
-                    if (this.options.onItemChanged) this.options.onItemChanged();
-                }
-            };
-
-            const applyBulkTagsRemove = async () => {
-                const text = this.tagInputHelper ? this.tagInputHelper.getPlainTextFromDiv(bulkTagsInput) : bulkTagsInput.textContent;
-                const tagNamesToRemove = text.trim().split(/\s+/).filter(Boolean);
-                if (tagNamesToRemove.length > 0 && itemIds.length > 0) {
-                    await this.session.bulkUpdate(itemIds, { remove_tag_names: tagNamesToRemove });
-                    this.refreshBulkCommonTags();
-                    bulkTagsInput.innerHTML = '';
-                    if (window.app && window.app.showNotification) {
-                        window.app.showNotification(window.i18n.t('upload.bulk.tags_removed', { count: tagNamesToRemove.length }), 'success');
-                    }
-                    if (this.options.onItemChanged) this.options.onItemChanged();
-                }
-            };
-
-            if (bulkTagsAddBtn) bulkTagsAddBtn.addEventListener('click', applyBulkTagsAdd);
-            if (bulkTagsRemoveBtn) bulkTagsRemoveBtn.addEventListener('click', applyBulkTagsRemove);
-        }
-
-        // Common Tags Preview Component
-        const commonTagsContainer = this.container.querySelector('#editor-bulk-common-tags-chips');
-        if (commonTagsContainer && typeof TagPreview !== 'undefined') {
-            this.bulkTagPreview = new TagPreview(commonTagsContainer, {
-                allowCategoryChange: false,
-                resolveAliases: false,
-            });
-            this.bulkTagPreview.setTags(this.getCommonTags());
         }
     }
 
@@ -621,6 +607,69 @@ class UploadMediaEditor {
         if (this.bulkTagPreview) {
             this.bulkTagPreview.setTags(this.getCommonTags());
         }
+    }
+
+    handleBulkTagsChanged(itemIds, bulkTagsInput) {
+        const text = this.tagInputHelper ? this.tagInputHelper.getPlainTextFromDiv(bulkTagsInput) : bulkTagsInput.textContent;
+        const tagNames = text.trim().split(/\s+/).filter(Boolean);
+
+        // Update the preview optimistically with whatever's in the input right now
+        const previewTags = tagNames.map(n => {
+            const existing = this.bulkCommonTagsMap ? this.bulkCommonTagsMap.get(n.toLowerCase()) : null;
+            return existing ? existing : { name: n };
+        });
+        if (this.bulkTagPreview) {
+            this.bulkTagPreview.setTags(previewTags);
+        }
+
+        // Debounce the actual bulk sync so rapid keystrokes don't flood the backend.
+        clearTimeout(this.bulkTagSaveTimeout);
+        this.bulkTagSaveTimeout = setTimeout(() => {
+            this.bulkTagUpdateChain = (this.bulkTagUpdateChain || Promise.resolve())
+                .then(() => this.commitBulkTagsChange(itemIds, bulkTagsInput))
+                .catch(() => { });
+        }, 500);
+    }
+
+    async commitBulkTagsChange(itemIds, bulkTagsInput) {
+        const readNames = () => {
+            const text = this.tagInputHelper ? this.tagInputHelper.getPlainTextFromDiv(bulkTagsInput) : bulkTagsInput.textContent;
+            return text.trim().split(/\s+/).filter(Boolean);
+        };
+
+        const tagNames = readNames();
+        const currentNames = new Set(tagNames.map(n => n.toLowerCase()));
+        const previousNames = this.lastBulkTagNames || new Set();
+
+        const toAdd = tagNames.filter(n => !previousNames.has(n.toLowerCase()));
+        const toRemove = Array.from(previousNames).filter(n => !currentNames.has(n));
+
+        if (itemIds.length === 0 || (toAdd.length === 0 && toRemove.length === 0)) {
+            return;
+        }
+
+        const payload = {};
+        if (toAdd.length > 0) payload.add_tags = toAdd;
+        if (toRemove.length > 0) payload.remove_tag_names = toRemove;
+
+        await this.session.bulkUpdate(itemIds, payload, { silent: true });
+
+        // Refresh baseline tracking against the server-confirmed state.
+        const updatedCommonTags = this.getCommonTags();
+        this.lastBulkTagNames = new Set(updatedCommonTags.map(t => t.name.toLowerCase()));
+        this.bulkCommonTagsMap = new Map(updatedCommonTags.map(t => [t.name.toLowerCase(), t]));
+
+        // Reconcile the preview with server-confirmed category colors
+        if (this.bulkTagPreview) {
+            const liveNames = readNames();
+            const reconciled = liveNames.map(n => {
+                const found = this.bulkCommonTagsMap.get(n.toLowerCase());
+                return found ? found : { name: n };
+            });
+            this.bulkTagPreview.setTags(reconciled);
+        }
+
+        if (this.options.onItemChanged) this.options.onItemChanged();
     }
 
     setupBulkAlbumBadgeEvents(itemIds) {
@@ -832,7 +881,7 @@ class UploadMediaEditor {
         // Debounce the actual PATCH so rapid keystrokes don't flood the backend
         clearTimeout(this.tagSaveTimeout);
         this.tagSaveTimeout = setTimeout(async () => {
-            const updated = await this.session.updateItem(item.item_id, { tags: itemTags });
+            const updated = await this.session.updateItem(item.item_id, { tags: itemTags }, { silent: true });
             if (updated && updated.tags) {
                 item.tags = updated.tags;
                 if (this.singleTagPreview) {

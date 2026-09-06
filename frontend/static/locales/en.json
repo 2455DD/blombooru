@@ -1207,9 +1207,7 @@
             "source_applied": "Source URL applied to selected items",
             "description_applied": "Description applied to selected items",
             "album_added": "Album added to selected items",
-            "tags_added": "Added {count} tag(s) to selected items",
-            "common_tags": "Common Tags",
-            "tags_removed": "Removed {count} tag(s) from selected items"
+            "common_tags": "Common Tags"
         },
         "progress": {
             "duplicates_skipped": "{count} duplicate(s) skipped.",

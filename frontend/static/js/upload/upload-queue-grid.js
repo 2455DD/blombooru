@@ -83,7 +83,7 @@ class UploadQueueGrid {
         this.session.on('itemUpdated', (item) => {
             this.renderThumbnail(item);
             if (this.selectedIds.has(item.item_id)) {
-                if (this.activeItemId === item.item_id) {
+                if (this.selectedIds.size === 1) {
                     if (document.activeElement.id !== 'editor-single-tags-input') {
                         this.syncEditor(true);
                     }

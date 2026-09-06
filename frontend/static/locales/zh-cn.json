@@ -1207,9 +1207,7 @@
             "source_applied": "",
             "description_applied": "",
             "album_added": "",
-            "tags_added": "",
-            "common_tags": "",
-            "tags_removed": ""
+            "common_tags": ""
         },
         "progress": {
             "duplicates_skipped": "已跳过 {count} 个重复项。",

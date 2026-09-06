@@ -152,7 +152,7 @@ class UploadSession {
         return updated;
     }
 
-    async bulkUpdate(itemIds, updateData) {
+    async bulkUpdate(itemIds, updateData, options = { silent: false }) {
         if (!this.sessionId || !itemIds || itemIds.length === 0) return [];
 
         const payload = {
@@ -189,7 +189,9 @@ class UploadSession {
         if (result.items) {
             result.items.forEach(it => {
                 this.items.set(it.item_id, it);
-                this.emit('itemUpdated', it);
+                if (!options.silent) {
+                    this.emit('itemUpdated', it);
+                }
             });
         }
         return result.items || [];
