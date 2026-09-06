@@ -184,6 +184,7 @@ def check_and_migrate_schema(engine):
         migrate_add_share_language,
         migrate_add_description,
         migrate_add_implication_patterns,
+        migrate_implication_patterns_to_jsonb,
         migrate_file_size_to_bigint,
         migrate_remove_duplicate_tag_aliases,
         migrate_add_api_key_permission,
@@ -295,6 +296,35 @@ def migrate_add_implication_patterns(engine, inspector):
             conn.execute(text(
                 "ALTER TABLE blombooru_tag_implications ADD COLUMN target_tag_patterns JSONB"
             ))
+        conn.commit()
+
+def migrate_implication_patterns_to_jsonb(engine, inspector):
+    """Convert target_tag_patterns column from JSON to JSONB on PostgreSQL."""
+    from sqlalchemy import text
+
+    if engine.dialect.name == 'sqlite':
+        return
+
+    tables = inspector.get_table_names()
+    if 'blombooru_tag_implications' not in tables:
+        return
+
+    columns = inspector.get_columns('blombooru_tag_implications')
+    for col in columns:
+        if col['name'] == 'target_tag_patterns':
+            if 'JSONB' in str(col['type']).upper():
+                return
+            break
+    else:
+        return
+
+    logger.info("Migrating target_tag_patterns column from JSON to JSONB...")
+    with engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE blombooru_tag_implications "
+            "ALTER COLUMN target_tag_patterns TYPE JSONB "
+            "USING target_tag_patterns::jsonb"
+        ))
         conn.commit()
 
 def migrate_file_size_to_bigint(engine, inspector):
