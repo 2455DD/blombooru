@@ -30,10 +30,10 @@ class UpdatePostUrlImport extends UpdatePostModalBase {
                     <div class="flex gap-2 mb-3">
                         <input id="upm-url-input" type="url"
                             class="flex-1 bg px-3 py-2 border text-xs focus:outline-none focus:border-primary hover:border-primary transition-colors"
-                            placeholder="https://danbooru.donmai.us/posts/..."
+                            placeholder="${window.i18n.t('common.url_placeholder')}"
                             value="${this._escapeHtml(this.currentMedia?.source || '')}">
                         <button id="upm-url-fetch" class="btn-primary whitespace-nowrap cursor-pointer">
-                            ${window.i18n.t('admin.media_management.booru_import.fetch')}
+                            ${window.i18n.t('admin.media_management.url_import.fetch')}
                         </button>
                     </div>
 
@@ -96,13 +96,13 @@ class UpdatePostUrlImport extends UpdatePostModalBase {
         if (!url) return;
 
         this._isFetching = true;
-        this._setStatus(window.i18n.t('admin.media_management.booru_import.fetching'));
+        this._setStatus(window.i18n.t('admin.media_management.url_import.fetching'));
         this._modal.querySelector('#upm-url-preview').style.display = 'none';
         this._modal.querySelector('#upm-url-apply').style.display = 'none';
         this._modal.querySelector('#upm-url-fetch').disabled = true;
 
         try {
-            const res = await fetch('/api/booru-import/fetch', {
+            const res = await fetch('/api/media/url-import/fetch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url })
@@ -129,6 +129,7 @@ class UpdatePostUrlImport extends UpdatePostModalBase {
     // ==================== Tag helpers ====================
 
     _sortPostTags(tags) {
+        if (!tags) return [];
         const order = { artist: 1, copyright: 2, character: 3, general: 4, meta: 5 };
         return [...tags].sort((a, b) => {
             const catA = order[a.category] || 4;
@@ -161,13 +162,28 @@ class UpdatePostUrlImport extends UpdatePostModalBase {
         return this._sortPostTags(tags).map(t => t.name).join(' ');
     }
 
+    _formatFileSize(bytes) {
+        if (!bytes) return '—';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    _truncateUrl(url, maxLen = 30) {
+        try {
+            const parsed = new URL(url);
+            const display = parsed.hostname + parsed.pathname;
+            return display.length > maxLen ? display.substring(0, maxLen) + '…' : display;
+        } catch {
+            return url.length > maxLen ? url.substring(0, maxLen) + '…' : url;
+        }
+    }
+
     // ==================== Preview ====================
 
     _renderPreview(post) {
         const preview = this._modal.querySelector('#upm-url-preview');
         if (!preview) return;
-
-        const tagsText = this._getTagsText(post.tags || []);
 
         // Resolution comparison
         const cw = this.currentMedia?.width ?? 0;
@@ -186,70 +202,75 @@ class UpdatePostUrlImport extends UpdatePostModalBase {
             }
         }
 
-        preview.innerHTML = `
-            <div class="bg p-4 border">
-                <div class="flex flex-col sm:flex-row gap-4">
-                    <!-- Thumbnail -->
-                    <div class="flex-shrink-0">
-                        ${post.preview_url
-                ? `<div class="w-32 h-32 surface border relative overflow-hidden" style="background-image: linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--surface-light), var(--surface) 40%) 50%, var(--surface) 100%); background-size: 200% 100%; animation: skeleton-wave 2s infinite linear;" id="upm-thumb-wrap">
-                                    <img src="/api/booru-import/proxy-image?url=${encodeURIComponent(post.preview_url)}" alt="Preview"
-                                        class="w-full h-full object-contain cursor-pointer opacity-0 transition-opacity duration-300"
-                                        onload="this.style.opacity='1'; this.closest('#upm-thumb-wrap').style.animation='none'; this.closest('#upm-thumb-wrap').style.backgroundImage='none';"
-                                        onerror="this.style.display='none'; this.closest('#upm-thumb-wrap').style.animation='none'; this.closest('#upm-thumb-wrap').style.backgroundImage='none';"></div>`
-                : `<div class="w-32 h-32 surface border flex items-center justify-center text-xs text-secondary">${window.i18n.t('common.none')}</div>`
-            }
+        const proxyUrl = `/api/media/url-import/proxy?url=${encodeURIComponent(post.file_url)}`;
+        const previewImgUrl = post.preview_url ? `/api/media/url-import/proxy?url=${encodeURIComponent(post.preview_url)}` : proxyUrl;
+
+        let previewHtml = '';
+        if (post.is_video && !post.preview_url) {
+            previewHtml = `<div class="w-32 h-32 surface border relative overflow-hidden" style="background-image: linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--surface-light), var(--surface) 40%) 50%, var(--surface) 100%); background-size: 200% 100%; animation: skeleton-wave 2s infinite linear;" id="upm-thumb-wrap">
+                    <video src="${previewImgUrl}" class="w-full h-full object-contain cursor-pointer opacity-0 transition-opacity duration-300" muted
+                        onloadeddata="this.style.opacity='1'; this.closest('#upm-thumb-wrap').style.animation='none'; this.closest('#upm-thumb-wrap').style.backgroundImage='none';"
+                        onerror="this.style.display='none'; this.closest('#upm-thumb-wrap').style.animation='none'; this.closest('#upm-thumb-wrap').style.backgroundImage='none';"></video>
+               </div>`;
+        } else {
+            previewHtml = `<div class="w-32 h-32 surface border relative overflow-hidden" style="background-image: linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--surface-light), var(--surface) 40%) 50%, var(--surface) 100%); background-size: 200% 100%; animation: skeleton-wave 2s infinite linear;" id="upm-thumb-wrap">
+                    <img src="${previewImgUrl}" alt="Preview" class="w-full h-full object-contain cursor-pointer opacity-0 transition-opacity duration-300"
+                        onload="this.style.opacity='1'; this.closest('#upm-thumb-wrap').style.animation='none'; this.closest('#upm-thumb-wrap').style.backgroundImage='none';"
+                        onerror="this.style.display='none'; this.closest('#upm-thumb-wrap').style.animation='none'; this.closest('#upm-thumb-wrap').style.backgroundImage='none';">
+               </div>`;
+        }
+
+        let infoHtml = '';
+        let tagsEditorHtml = '';
+
+        if (post.is_booru_post) {
+            infoHtml = `
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-secondary shrink-0">${window.i18n.t('media.info.rating')}</span>
+                        <div id="upm-rating-select" class="custom-select w-32" data-value="${post.rating || 'safe'}">
+                            <div class="custom-select-trigger w-full flex items-center justify-between gap-2 px-2 py-1 bg border text-xs cursor-pointer focus:outline-none hover:border-primary transition-colors">
+                                <span class="custom-select-value text capitalize">${post.rating || 'safe'}</span>
+                                ${window.Icons.selectArrow({ size: 10, class: 'custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary' })}
+                            </div>
+                            <div class="custom-select-dropdown bg border border-primary max-h-40 overflow-y-auto shadow-lg z-50">
+                                <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs ${post.rating === 'safe' ? 'selected' : ''}" data-value="safe">Safe</div>
+                                <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs ${post.rating === 'questionable' ? 'selected' : ''}" data-value="questionable">Questionable</div>
+                                <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs ${post.rating === 'explicit' ? 'selected' : ''}" data-value="explicit">Explicit</div>
+                            </div>
+                        </div>
                     </div>
-
-                    <!-- Info -->
-                    <div class="flex-1 min-w-0">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-3">
-                            <div class="flex items-center gap-2">
-                                <span class="text-secondary shrink-0">${window.i18n.t('media.info.rating')}</span>
-                                <div id="upm-rating-select" class="custom-select w-32" data-value="${post.rating || 'safe'}">
-                                    <div class="custom-select-trigger w-full flex items-center justify-between gap-2 px-2 py-1 bg border text-xs cursor-pointer focus:outline-none hover:border-primary transition-colors">
-                                        <span class="custom-select-value text capitalize">${post.rating || 'safe'}</span>
-                                        ${window.Icons.selectArrow({ size: 10, class: 'custom-select-arrow flex-shrink-0 transition-transform duration-200 text-secondary' })}
-                                    </div>
-                                    <div class="custom-select-dropdown bg border border-primary max-h-40 overflow-y-auto shadow-lg z-50">
-                                        <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs ${post.rating === 'safe' ? 'selected' : ''}" data-value="safe">Safe</div>
-                                        <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs ${post.rating === 'questionable' ? 'selected' : ''}" data-value="questionable">Questionable</div>
-                                        <div class="custom-select-option px-3 py-2 cursor-pointer hover:surface text-xs ${post.rating === 'explicit' ? 'selected' : ''}" data-value="explicit">Explicit</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex items-center min-w-0">
-                                <span class="text-secondary shrink-0 mr-1">${window.i18n.t('media.info.source')}</span>
-                                ${post.source
-                ? `<strong class="truncate min-w-0 flex-1 font-normal text-right">
-                                        <a href="${this._escapeHtml(post.source)}" target="_blank" class="text-primary hover:underline block truncate" title="${this._escapeHtml(post.source)}">
-                                            ${this._escapeHtml(post.source)}
-                                        </a>
-                                       </strong>`
-                : '<span class="text-secondary ml-1">...</span>'
-            }
-                            </div>
-                            <div>
-                                <span class="text-secondary">${window.i18n.t('media.info.dimensions')}</span>
-                                <span class="font-medium ml-1">${post.width || '?'}x${post.height || '?'}</span>
-                                ${resolutionHtml ? `<span class="ml-1 text-xs">${resolutionHtml}</span>` : ''}
-                            </div>
-                            ${post.file_size ? `
-                            <div>
-                                <span class="text-secondary">${window.i18n.t('media.info.size')}</span>
-                                <span class="font-medium ml-1">${this._formatFileSize(post.file_size)}</span>
-                            </div>` : ''}
-                        </div>
-
-                        <div class="mb-3">
-                            <div class="text-xs font-bold mb-1">${window.i18n.t('common.tags')}</div>
-                            <div id="upm-tags-preview" class="p-2 surface border flex flex-wrap gap-2">
-                            </div>
-                        </div>
+                    <div class="flex items-center min-w-0">
+                        <span class="text-secondary shrink-0 mr-1">${window.i18n.t('media.info.source')}</span>
+                        ${post.source
+                    ? `<strong class="truncate min-w-0 flex-1 font-normal text-right">
+                                <a href="${this._escapeHtml(post.source)}" target="_blank" class="text-primary hover:underline block truncate" title="${this._escapeHtml(post.source)}">
+                                    ${this._escapeHtml(post.source)}
+                                </a>
+                               </strong>`
+                    : '<span class="text-secondary ml-1">...</span>'
+                }
+                    </div>
+                    <div>
+                        <span class="text-secondary">${window.i18n.t('media.info.dimensions')}</span>
+                        <span class="font-medium ml-1">${post.width || '?'}x${post.height || '?'}</span>
+                        ${resolutionHtml ? `<span class="ml-1 text-xs">${resolutionHtml}</span>` : ''}
+                    </div>
+                    ${post.file_size ? `
+                    <div>
+                        <span class="text-secondary">${window.i18n.t('media.info.size')}</span>
+                        <span class="font-medium ml-1">${this._formatFileSize(post.file_size)}</span>
+                    </div>` : ''}
+                </div>
+                <div class="mb-3">
+                    <div class="text-xs font-bold mb-1">${window.i18n.t('common.tags')}</div>
+                    <div id="upm-tags-preview" class="p-2 surface border flex flex-wrap gap-2">
                     </div>
                 </div>
+            `;
 
-                <!-- Editable tags input -->
+            const tagsText = this._getTagsText(post.tags || []);
+            tagsEditorHtml = `
                 <div class="mt-3 relative">
                     <label class="text-xs font-bold block mb-1">${window.i18n.t('media.tags.edit_tags')}</label>
                     <div id="upm-tags-input"
@@ -257,6 +278,30 @@ class UpdatePostUrlImport extends UpdatePostModalBase {
                         contenteditable="true"
                         style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;">${this._escapeHtml(tagsText)}</div>
                 </div>
+            `;
+        } else {
+            infoHtml = `
+                <div class="flex-1 min-w-0 text-xs space-y-2">
+                    <div><strong>${window.i18n.t('media.info.filename')}:</strong> ${this._escapeHtml(post.filename)}</div>
+                    <div><strong>${window.i18n.t('media.info.type')}:</strong> ${this._escapeHtml(post.content_type)}</div>
+                    <div><strong>${window.i18n.t('media.info.size')}:</strong> ${this._formatFileSize(post.file_size)}</div>
+                    <div class="break-all"><strong>${window.i18n.t('media.info.source')}:</strong> ${this._escapeHtml(this._truncateUrl(post.file_url, 80))}</div>
+                </div>
+            `;
+        }
+
+        preview.innerHTML = `
+            <div class="bg p-4 border">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <div class="flex-shrink-0">
+                        ${previewHtml}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        ${infoHtml}
+                    </div>
+                </div>
+                ${tagsEditorHtml}
+
 
                 <!-- Update options -->
                 <div class="mt-3 flex flex-col gap-1.5">
@@ -264,16 +309,17 @@ class UpdatePostUrlImport extends UpdatePostModalBase {
                         ${window.i18n.t('modal.update_post.what_to_update')}
                     </p>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
-                        ${this._checkboxRow('upm-upd-tags', window.i18n.t('common.tags'), true)}
-                        ${this._checkboxRow('upm-upd-rating', window.i18n.t('media.info.rating'), true)}
+                        ${post.is_booru_post ? this._checkboxRow('upm-upd-tags', window.i18n.t('common.tags'), true) : ''}
+                        ${post.is_booru_post ? this._checkboxRow('upm-upd-rating', window.i18n.t('media.info.rating'), true) : ''}
                         ${this._checkboxRow('upm-upd-file', window.i18n.t('modal.update_post.update_file'), autoCheckFile)}
                         ${this._checkboxRow('upm-upd-source', window.i18n.t('media.info.source_url'), true)}
-                        ${this._checkboxRow('upm-upd-desc', window.i18n.t('common.description'), false)}
+                        ${post.is_booru_post ? this._checkboxRow('upm-upd-desc', window.i18n.t('common.description'), false) : ''}
                         ${this._checkboxRow('upm-upd-filename', window.i18n.t('media.info.filename'), false)}
                     </div>
                 </div>
 
                 <!-- Tag mode -->
+                ${post.is_booru_post ? `
                 <div id="upm-tag-mode-section" class="mt-3">
                     <p class="text-xs font-bold text-secondary uppercase tracking-wide mb-2">
                         ${window.i18n.t('modal.update_post.tag_mode')}
@@ -292,7 +338,7 @@ class UpdatePostUrlImport extends UpdatePostModalBase {
                             </span>
                         </label>
                     </div>
-                </div>
+                </div>` : ''}
             </div>
         `;
 
@@ -300,67 +346,68 @@ class UpdatePostUrlImport extends UpdatePostModalBase {
 
         this._modal.querySelector('#upm-url-apply').style.display = '';
 
-        const tagsPreviewContainer = preview.querySelector('#upm-tags-preview');
-        if (tagsPreviewContainer && typeof TagPreview !== 'undefined') {
-            this.tagPreview = new TagPreview(tagsPreviewContainer, {
-                allowCategoryChange: true,
-                onCategoryChange: (tag, newCategory) => {
-                    if (this._fetchedPost && this._fetchedPost.tags) {
-                        const existing = this._fetchedPost.tags.find(t => t.name.toLowerCase() === tag.name.toLowerCase());
-                        if (existing) {
-                            existing.category = newCategory;
-                            existing.user_assigned = true;
-                            existing.is_new = true;
+        if (post.is_booru_post) {
+            const tagsPreviewContainer = preview.querySelector('#upm-tags-preview');
+            if (tagsPreviewContainer && typeof TagPreview !== 'undefined') {
+                this.tagPreview = new TagPreview(tagsPreviewContainer, {
+                    allowCategoryChange: true,
+                    onCategoryChange: (tag, newCategory) => {
+                        if (this._fetchedPost && this._fetchedPost.tags) {
+                            const existing = this._fetchedPost.tags.find(t => t.name.toLowerCase() === tag.name.toLowerCase());
+                            if (existing) {
+                                existing.category = newCategory;
+                                existing.user_assigned = true;
+                                existing.is_new = true;
+                            }
                         }
                     }
-                }
-            });
-            this.tagPreview.setTags(post.tags);
-        }
+                });
+                this.tagPreview.setTags(post.tags);
+            }
 
-        const ratingSelectEl = preview.querySelector('#upm-rating-select');
-        if (ratingSelectEl && typeof CustomSelect !== 'undefined') {
-            new CustomSelect(ratingSelectEl);
-        }
+            const ratingSelectEl = preview.querySelector('#upm-rating-select');
+            if (ratingSelectEl && typeof CustomSelect !== 'undefined') {
+                new CustomSelect(ratingSelectEl);
+            }
 
-        const tagsInput = preview.querySelector('#upm-tags-input');
-        if (tagsInput && typeof TagInputHelper !== 'undefined') {
-            this.tagInputHelper = new TagInputHelper();
-            this.tagInputHelper.setupTagInput(tagsInput, 'upm-tags', {
-                validateDelay: 500,
-                onValidate: () => {
-                    if (this._fetchedPost) {
-                        this.updateTagsPreview();
+            const tagsInput = preview.querySelector('#upm-tags-input');
+            if (tagsInput && typeof TagInputHelper !== 'undefined') {
+                this.tagInputHelper = new TagInputHelper();
+                this.tagInputHelper.setupTagInput(tagsInput, 'upm-tags', {
+                    validateDelay: 500,
+                    onValidate: () => {
+                        if (this._fetchedPost) {
+                            this.updateTagsPreview();
+                        }
                     }
-                }
-            });
-            setTimeout(() => this.tagInputHelper.validateAndStyleTags(tagsInput), 200);
-        }
-        if (tagsInput && typeof TagAutocomplete !== 'undefined') {
-            new TagAutocomplete(tagsInput, {
-                multipleValues: true,
-                allowCreate: true,
-                containerClasses: 'surface border border-color shadow-lg z-50',
-            });
-        }
+                });
+                setTimeout(() => this.tagInputHelper.validateAndStyleTags(tagsInput), 200);
+            }
+            if (tagsInput && typeof TagAutocomplete !== 'undefined') {
+                new TagAutocomplete(tagsInput, {
+                    multipleValues: true,
+                    allowCreate: true,
+                    containerClasses: 'surface border border-color shadow-lg z-50',
+                });
+            }
 
-        const tagsChk = preview.querySelector('#upm-upd-tags');
-        const tagModeSection = this._modal.querySelector('#upm-tag-mode-section');
-        if (tagsChk && tagModeSection) {
-            tagModeSection.style.display = tagsChk.checked ? '' : 'none';
-            tagsChk.addEventListener('change', () => {
+            const tagsChk = preview.querySelector('#upm-upd-tags');
+            const tagModeSection = this._modal.querySelector('#upm-tag-mode-section');
+            if (tagsChk && tagModeSection) {
                 tagModeSection.style.display = tagsChk.checked ? '' : 'none';
-            });
+                tagsChk.addEventListener('change', () => {
+                    tagModeSection.style.display = tagsChk.checked ? '' : 'none';
+                });
+            }
         }
 
-        const thumb = preview.querySelector('img');
+        const thumb = preview.querySelector('img, video');
         if (thumb && post.file_url) {
-            const isVideo = window.FormatRegistry.isVideo(post.file_url);
+            const proxyUrl = `/api/media/url-import/proxy?url=${encodeURIComponent(post.file_url)}`;
+            const isVideo = post.is_video || (post.is_booru_post && window.FormatRegistry.isVideo(post.file_url));
+            thumb.style.cursor = 'pointer';
             thumb.addEventListener('click', () => {
-                this._openFullscreen(
-                    `/api/booru-import/proxy-image?url=${encodeURIComponent(post.file_url)}`,
-                    isVideo
-                );
+                this._openFullscreen(proxyUrl, isVideo);
             });
         }
     }
