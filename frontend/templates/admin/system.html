@@ -1,4 +1,4 @@
-{% from "components/icons.html" import select_arrow_icon, reset_icon %}
+{% from "components/icons.html" import select_arrow_icon, reset_icon, upload_icon %}
 <!-- Settings Section -->
 <div id="settings-section">
     <div class="surface p-2 sm:p-6 border mb-4">
@@ -973,8 +973,9 @@
                         <strong>{{ t('common.warning') }}:</strong> {{ t('admin.backup.import_time_warning') }}
                     </p>
 
-                    <div id="full-import-area" class="upload-area">
-                        <p class="text-xs">{{ t('admin.backup.drop_backup') }}</p>
+                    <div id="full-import-area" class="upload-area flex flex-col items-center justify-center gap-2">
+                        {{ upload_icon(size=32, class="text-secondary") }}
+                        <p class="text-xs text-secondary">{{ t('admin.backup.drop_backup') }}</p>
                         <input type="file" id="full-import-input" accept=".zip" class="hidden">
                     </div>
 

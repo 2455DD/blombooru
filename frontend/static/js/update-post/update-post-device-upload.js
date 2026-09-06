@@ -81,7 +81,7 @@ class UpdatePostDeviceUpload extends UpdatePostModalBase {
                         <!-- Drop zone -->
                         <div id="upm-drop-zone" class="upload-area bg flex flex-col items-center justify-center gap-2 p-8 border cursor-pointer hover:border-primary transition-colors mb-3">
                             ${window.Icons.upload({ size: 32, class: 'text-secondary' })}
-                            <p id="upm-drop-label" class="text-xs font-medium text-center">
+                            <p id="upm-drop-label" class="text-xs text-secondary">
                                 ${window.i18n.t('modal.update_post.drop_file_here')}
                             </p>
                         </div>

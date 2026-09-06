@@ -1,4 +1,4 @@
-{% from "components/icons.html" import select_arrow_icon %}
+{% from "components/icons.html" import select_arrow_icon, upload_icon %}
 <!-- Media Management Section -->
 <div class="surface p-2 sm:p-6 border mb-4" id="media-management">
     <h2 class="text-base font-bold mb-4 pb-3 border-b">{{ t('admin.media_management.title') }}</h2>
@@ -31,8 +31,9 @@
             <button id="scan-media-btn" class="btn-primary w-full mb-4 cursor-pointer">
                 {{ t('admin.media_management.scan_untracked') }}
             </button>
-            <div id="upload-area" class="upload-area">
-                <p class="text-xs">{{ t('admin.media_management.drop_media') }}</p>
+            <div id="upload-area" class="upload-area flex flex-col items-center justify-center gap-2">
+                {{ upload_icon(size=32, class="text-secondary") }}
+                <p class="text-xs text-secondary">{{ t('admin.media_management.drop_media') }}</p>
                 <input type="file" id="file-input" multiple accept="image/*,video/*,.zip,.tar.gz,.tgz">
             </div>
 
@@ -138,8 +139,9 @@
                 {{ t('admin.tags_management.csv_categories') }}
             </p>
 
-            <div id="csv-upload-area" class="upload-area">
-                <p class="text-xs">{{ t('admin.tags_management.drop_csv') }}</p>
+            <div id="csv-upload-area" class="upload-area flex flex-col items-center justify-center gap-2">
+                {{ upload_icon(size=32, class="text-secondary") }}
+                <p class="text-xs text-secondary">{{ t('admin.tags_management.drop_csv') }}</p>
                 <input type="file" id="csv-file-input" accept=".csv" class="hidden">
             </div>
 

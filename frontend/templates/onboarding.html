@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/icons.html" import chevron_down_icon %}
+{% from "components/icons.html" import chevron_down_icon, upload_icon %}
 
 {% set show_header = false %}
 {% set show_footer = false %}
@@ -128,7 +128,8 @@
                 <div id="backup-restore-panel" style="display: none;" class="p-4 pt-2 border-t">
                     <p class="text-xs text-secondary mb-3">{{ t('admin.backup.import_hint') }}</p>
                     <div id="onboarding-backup-drop"
-                        class="upload-area cursor-pointer p-4 border border-dashed text-center surface">
+                        class="upload-area cursor-pointer p-4 border border-dashed text-center surface flex flex-col items-center justify-center gap-2">
+                        {{ upload_icon(size=32, class="text-secondary") }}
                         <p class="text-xs text-secondary" id="backup-file-label">{{ t('admin.backup.drop_backup') }}</p>
                         <input type="file" id="onboarding-backup-file" accept=".zip" class="hidden">
                     </div>
