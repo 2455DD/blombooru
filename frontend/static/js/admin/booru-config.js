@@ -48,12 +48,12 @@ class BooruConfigManager {
 
         this.tableBody.innerHTML = configs.map(config => `
             <tr class="border-b last:border-b-0">
-                <td class="py-2 px-3 text-xs font-mono">${this.escapeHtml(config.domain)}</td>
-                <td class="py-2 px-3 text-xs">${this.escapeHtml(config.username || '-')}</td>
-                <td class="py-2 px-3 text-xs">
+                <td class="p-2 text-xs font-mono break-all">${this.escapeHtml(config.domain)}</td>
+                <td class="p-2 text-xs break-all">${this.escapeHtml(config.username || '-')}</td>
+                <td class="p-2 text-xs">
                     ${config.has_api_key ? `<span class="text-success">${window.i18n.t('admin.settings.booru_config.has_key')}</span>` : `<span class="text-secondary">${window.i18n.t('common.none')}</span>`}
                 </td>
-                <td class="py-2 px-3 text-xs text-right">
+                <td class="p-2 text-xs text-right">
                     <button class="text-danger hover:text-danger transition-colors cursor-pointer" onclick="window.booruConfigManager.deleteConfig('${config.domain}')">
                         ${window.Icons.trash({ size: 14 })}
                     </button>

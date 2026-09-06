@@ -1773,9 +1773,9 @@ class AdminSystem {
             const tr = document.createElement('tr');
             tr.className = 'border-b last:border-b-0';
             tr.innerHTML = `
-                <td class="py-2 px-3 text-xs"></td>
-                <td class="py-2 px-3 text-xs">${typeBadge}</td>
-                <td class="py-2 px-3 text-xs text-right whitespace-nowrap">
+                <td class="p-2 text-xs break-all"></td>
+                <td class="p-2 text-xs">${typeBadge}</td>
+                <td class="p-2 text-xs text-right whitespace-nowrap">
                     <button type="button" class="text-success hover:text-success transition-colors mr-2 cursor-pointer"
                         data-action="export" data-theme-id="${this.app.escapeHtml(theme.id)}"
                         title="${window.i18n.t('admin.settings.custom_themes.export')}">

@@ -229,9 +229,9 @@ class TagImplicationManager {
 
         this.tableBody.innerHTML = implications.map(imp => `
             <tr class="border-b last:border-b-0" style="content-visibility: auto; contain-intrinsic-size: auto 37px;">
-                <td class="py-2 px-3 text-xs font-mono">${this._buildTargetDisplay(imp)}</td>
-                <td class="py-2 px-3 text-xs font-mono">${imp.implied_tags.map(t => this.escapeHtml(t.name)).join(' ')}</td>
-                <td class="py-2 px-3 text-xs text-right whitespace-nowrap">
+                <td class="p-2 text-xs font-mono break-all">${this._buildTargetDisplay(imp)}</td>
+                <td class="p-2 text-xs font-mono break-all">${imp.implied_tags.map(t => this.escapeHtml(t.name)).join(' ')}</td>
+                <td class="p-2 text-xs text-right whitespace-nowrap">
                     <button class="text-primary hover:text-primary transition-colors mr-2 cursor-pointer" title="${window.i18n.t('common.edit')}"
                         onclick="window.tagImplicationManager.editImplication(${imp.id}, '${this.escapeAttr(this._buildTargetRaw(imp))}', '${this.escapeAttr(imp.implied_tags.map(t => t.name).join(' '))}')">
                         ${window.Icons.edit({ size: 14 })}
