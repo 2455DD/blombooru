@@ -209,7 +209,6 @@
                 "hint": "Klistra in en URL till ett booru-inlägg eller en direktlänk till en bild eller video. Booru-länkar importerar taggar, betyg, källa osv. automatiskt.",
                 "fetch": "Hämta",
                 "fetching": "Hämtar...",
-                "add_to_queue": "Lägg till i uppladdningskö",
                 "added_to_queue": "Lagt till i uppladdningskö",
                 "fetch_error": "Kunde inte hämta media",
                 "already_in_queue": "Den här filen finns redan i uppladdningskön",

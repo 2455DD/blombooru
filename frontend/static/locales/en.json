@@ -209,7 +209,6 @@
                 "hint": "Paste a booru post URL or a direct link to an image or video. Booru links will import tags, rating, source, etc. automatically.",
                 "fetch": "Fetch",
                 "fetching": "Fetching...",
-                "add_to_queue": "Add to Upload Queue",
                 "added_to_queue": "Added to upload queue",
                 "fetch_error": "Failed to fetch media",
                 "already_in_queue": "This file is already in the upload queue",

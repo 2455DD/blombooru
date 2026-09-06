@@ -209,7 +209,6 @@
                 "hint": "",
                 "fetch": "获取",
                 "fetching": "",
-                "add_to_queue": "添加到上传队列",
                 "added_to_queue": "已添加到上传队列",
                 "fetch_error": "",
                 "already_in_queue": "",

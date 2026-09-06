@@ -209,7 +209,6 @@
                 "hint": "",
                 "fetch": "Получить данные",
                 "fetching": "",
-                "add_to_queue": "Добавить в очередь загрузки",
                 "added_to_queue": "Добавлено в очередь загрузки",
                 "fetch_error": "",
                 "already_in_queue": "",
