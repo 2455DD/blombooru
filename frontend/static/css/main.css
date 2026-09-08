@@ -263,10 +263,14 @@ span.checked .filter-check-icon {
     text-decoration: none;
     transition: opacity 0.2s;
     font-weight: 500;
+    cursor: default;
+}
+
+a.tag {
     cursor: pointer;
 }
 
-.tag:hover {
+a.tag:hover {
     opacity: 0.8;
 }
 
