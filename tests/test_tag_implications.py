@@ -681,11 +681,11 @@ class TestTagImplications(BackupTestBase):
         self.db.commit()
 
         payload = ExpandImplicationsRequest(tags=["tabby"])
-        res = asyncio.run(expand_tag_implications(payload, db=self.db))
+        res = asyncio.run(expand_tag_implications(payload, current_user=self.admin_user, db=self.db))
         self.assertEqual(res, {"implied_tags": ["hunter"]})
 
         empty_payload = ExpandImplicationsRequest(tags=[])
-        empty_res = asyncio.run(expand_tag_implications(empty_payload, db=self.db))
+        empty_res = asyncio.run(expand_tag_implications(empty_payload, current_user=self.admin_user, db=self.db))
         self.assertEqual(empty_res, {"implied_tags": []})
 
     def test_simulate_apply_all_large_scale(self):
